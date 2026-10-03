@@ -26,4 +26,6 @@ The heart and torso asset credits and license details are in [`assets/ATTRIBUTIO
 
 ## GitHub Pages
 
-Pushing to `main`, or manually dispatching the workflow on `main`, builds and deploys the static site to GitHub Pages. Pull requests to `main` run the checks and build without deploying. The workflow publishes only the files selected by `scripts/build-pages.cjs`.
+Run the checks above, then `node scripts/build-pages.cjs` to refresh the committed `docs/` site. Commit source changes together with the generated files. GitHub Pages publishes `main` → `/docs` after the PR merges.
+
+The build copies an explicit 14-file allowlist and a `.nojekyll` marker. Local screenshots, backups, tests, and development metadata are excluded from the published site. Branch-based publishing works with the existing GitHub login without requesting additional workflow permissions.
