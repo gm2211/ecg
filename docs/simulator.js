@@ -56,7 +56,7 @@
   scenarioPicker.innerHTML=`<span>Mechanism</span> <select id="sim-scenario-select" aria-label="Conduction mechanism">${api.scenarios.map(s=>`<option value="${s.id}">${s.label}</option>`).join('')}</select>`;
   root.querySelector('.sim-intro').append(scenarioPicker);
   const tabs=document.createElement('div'); tabs.className='sim-tabs';
-  tabs.innerHTML=`<div class="sim-page-tabs" role="tablist" aria-label="Simulator pages">${[['simulation','Simulation'],['quiz','Quiz'],['mechanism','Mechanism'],['controls','Controls'],['sources','Sources']].map(([id,label])=>`<button id="sim-tab-${id}" role="tab" data-sim-page-tab="${id}" aria-controls="sim-page-${id}" aria-selected="${id==='simulation'}" tabindex="${id==='simulation'?0:-1}">${label}</button>`).join('')}</div><div class="sim-mobile-views" role="group" aria-label="Simulation panel"><button data-observe="heart" aria-pressed="true">Heart</button><button data-observe="ecg" aria-pressed="false">ECG</button></div>`;
+  tabs.innerHTML=`<div class="sim-page-tabs" role="tablist" aria-label="Simulator pages">${[['simulation','Simulation'],['quiz','Quiz'],['controls','Controls'],['sources','Sources']].map(([id,label])=>`<button id="sim-tab-${id}" role="tab" data-sim-page-tab="${id}" aria-controls="sim-page-${id}" aria-selected="${id==='simulation'}" tabindex="${id==='simulation'?0:-1}">${label}</button>`).join('')}</div><div class="sim-mobile-views" role="group" aria-label="Simulation panel"><button data-observe="heart" aria-pressed="true">Heart</button><button data-observe="ecg" aria-pressed="false">ECG</button></div>`;
   root.querySelector('.sim-intro').after(tabs);
   const content=document.createElement('div'); content.className='sim-content'; tabs.after(content);
   function page(element,id) {
@@ -79,11 +79,13 @@
   tabs.querySelector('.sim-mobile-views').before($('sim-quiz-open'));
   root.querySelector('.sim-scenario-note').textContent='';
   const explanation=root.querySelector('.sim-explain');
-  const mechanismPage=document.createElement('section'); mechanismPage.className='sim-detail-page';
+  const contextBox=document.createElement('aside');contextBox.className='sim-context';contextBox.setAttribute('aria-label','Simulation explanation');contextBox.tabIndex=-1;
   const mechanismCard=document.createElement('div'); mechanismCard.className='sim-mechanism-card';
+  mechanismCard.innerHTML='<div class="sim-kicker">Mechanism</div>';
   mechanismCard.append($('sim-mechanism-title'),$('sim-mechanism-copy'));
+  const ecgCard=document.createElement('div');ecgCard.innerHTML='<div class="sim-kicker">ECG effect</div><h2>How it shapes the trace</h2><p id="sim-mechanism-ecg"></p>';
   const nowCard=root.querySelector('.sim-phase-copy');
-  mechanismPage.append(nowCard,mechanismCard); page(mechanismPage,'mechanism');
+  contextBox.append(nowCard,mechanismCard,ecgCard);layout.append(contextBox);
   page(root.querySelector('.sim-parameters'),'controls'); explanation.remove();
   const sourcesPage=document.createElement('section'); sourcesPage.className='sim-detail-page';
   const sourceContent=[
@@ -97,17 +99,19 @@
   const credit=root.querySelector('.sim-heart-credit').cloneNode(true);credit.className='sim-source-credit';references.append(credit);
   sourcesPage.append(references);sourceCards.push(references);page(sourcesPage,'sources');
   root.querySelector('.sim-footnote').remove();
-  function paginate(container,cards,names) {
+  function paginate(container,cards,names,compact=false) {
     let index=0;const pager=document.createElement('div');pager.className='sim-page-pager';
     pager.innerHTML='<button type="button" aria-label="Previous explanation page">← Previous</button><output aria-live="polite"></output><button type="button" aria-label="Next explanation page">Next →</button>';
     container.append(pager);const buttons=pager.querySelectorAll('button');
-    function show(){cards.forEach((card,i)=>card.hidden=i!==index);pager.querySelector('output').textContent=`${index+1} / ${cards.length} · ${names[index]}`;buttons[0].disabled=index===0;buttons[1].disabled=index===cards.length-1;}
+    if(compact){buttons[0].textContent='‹';buttons[1].textContent='›';}
+    function show(){cards.forEach((card,i)=>card.hidden=i!==index);container.dataset.explanationPage=String(index);pager.querySelector('output').textContent=`${index+1} / ${cards.length}${compact?'':` · ${names[index]}`}`;buttons[0].disabled=index===0;buttons[1].disabled=index===cards.length-1;}
     buttons[0].addEventListener('click',()=>{index--;show();});buttons[1].addEventListener('click',()=>{index++;show();});show();
+    return next=>{index=Math.max(0,Math.min(cards.length-1,next));show();};
   }
-  paginate(mechanismPage,[nowCard,mechanismCard],['At this instant','Mechanism']);
+  const showContext=paginate(contextBox,[nowCard,mechanismCard,ecgCard],['At this instant','Mechanism','ECG effect'],true);
   paginate(sourcesPage,sourceCards,['Assumptions','Animation','Pathways','Sources']);
   function showPage(id) {
-    if(quiz&&((id==='controls')||(quizBlind()&&['mechanism','sources'].includes(id))))return;
+    if(quiz&&((id==='controls')||(quizBlind()&&id==='sources')))return;
     if(!quiz&&id==='quiz'&&root.dataset.page!=='quiz')priorStudyPage=root.dataset.page;
     root.dataset.page=id;content.querySelectorAll('[data-sim-page]').forEach(p=>p.hidden=p.dataset.simPage!==id);
     tabs.querySelectorAll('[role="tab"]').forEach(b=>{const selected=b.dataset.simPageTab===id;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;});
@@ -143,7 +147,7 @@
     const active=!!quiz,blind=quizBlind();root.dataset.mode=active?'quiz':'study';root.dataset.quizBlind=String(blind);
     scenarioPicker.hidden=active;root.querySelector('.sim-scenarios').hidden=active;root.querySelector('.sim-intro-note').hidden=active;exitQuiz.hidden=!active;
     $('sim-tab-simulation').textContent=active?'Inspect':'Simulation';$('sim-tab-quiz').textContent=active?'Answer':'Quiz';
-    $('sim-tab-mechanism').textContent=active?'Explanation':'Mechanism';$('sim-tab-mechanism').hidden=blind;$('sim-tab-sources').hidden=blind;$('sim-tab-controls').hidden=active;
+    contextBox.hidden=blind;$('sim-tab-sources').hidden=blind;$('sim-tab-controls').hidden=active;
     $('sim-events').hidden=active;quizDock.hidden=!active;$('sim-quiz-open').hidden=!active;$('sim-compare').closest('label').hidden=blind;
     root.querySelector('.sim-intro h1').textContent=active?(quiz.complete?'Quiz complete':`Case ${quiz.index+1} of ${quiz.total}`):'Electrical simulator';
     root.querySelector('.sim-intro > div > p').textContent=active?'Inspect the activation. Identify the mechanism.':'Change the conduction. See why the ECG changes.';
@@ -157,7 +161,7 @@
     $('sim-quiz-open').textContent=quiz.complete?'View score →':quiz.answered?'View result →':'Choose answer →';
   }
   function startQuiz() {
-    if(!quiz)studySnapshot={state:{...state},params:{...params},page:priorStudyPage,view:stage.dataset.view,observe:root.dataset.observe,camera:simCamera?.position.clone(),target:orbit?.target.clone()};
+    if(!quiz)studySnapshot={state:{...state},params:{...params},page:priorStudyPage,contextPage:Number(contextBox.dataset.explanationPage),view:stage.dataset.view,observe:root.dataset.observe,camera:simCamera?.position.clone(),target:orbit?.target.clone()};
     quiz=window.EPSimQuiz.createSession(scenarios.map(s=>s.id));loadQuizCase();
   }
   function loadQuizCase() {
@@ -172,7 +176,7 @@
     $('sim-lead').value=state.lead;$('sim-speed').value=state.speed;$('sim-compare').checked=state.compare;
     root.dataset.observe=saved.observe;tabs.querySelectorAll('[data-observe]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.observe===saved.observe)));
     setView(saved.view);if(simCamera&&saved.camera){simCamera.position.copy(saved.camera);orbit.target.copy(saved.target);orbit.update();}
-    syncQuizUI();syncLead();phaseId='';update();syncPlayback();showPage(saved.page);$(`sim-tab-${saved.page}`).focus();
+    syncQuizUI();syncLead();phaseId='';update();syncPlayback();showContext(saved.contextPage);showPage(saved.page);$(`sim-tab-${saved.page}`).focus();
   }
   $('sim-quiz-start').addEventListener('click',startQuiz);$('sim-quiz-again').addEventListener('click',startQuiz);
   exitQuiz.addEventListener('click',finishQuiz);$('sim-quiz-finish-exit').addEventListener('click',finishQuiz);
@@ -188,7 +192,7 @@
     $('sim-quiz-next').textContent=quiz.index===quiz.total-1?'See score →':'Next case →';
     syncQuizUI();rebuildPaths();drawTraces();$('sim-quiz-next').focus();
   });
-  $('sim-quiz-explain').addEventListener('click',()=>{if(!quiz?.answered)return;showPage('mechanism');mechanismPage.querySelector('[aria-label="Next explanation page"]').click();$('sim-tab-mechanism').focus();});
+  $('sim-quiz-explain').addEventListener('click',()=>{if(!quiz?.answered)return;showContext(1);showPage('simulation');contextBox.focus({preventScroll:true});});
   $('sim-quiz-next').addEventListener('click',()=>{
     if(!quiz?.next())return;
     if(quiz.complete){state.playing=false;syncPlayback();syncQuizUI();$('sim-quiz-total').textContent=`${quiz.score} of ${quiz.total} correct`;showPage('quiz');$('sim-quiz-again').focus();}
@@ -452,7 +456,8 @@
     $('sim-av-row').hidden=id==='avrt'; $('sim-branch-row').hidden=!['rbbb','lbbb'].includes(id); $('sim-accessory-row').hidden=id!=='wpw';
     $('sim-param-hint').textContent=id==='avrt'?'Rate and forward conduction time are linked to close the re-entry loop. The accessory pathway carries activation back to the atria.':id==='wpw'?'One left free-wall bypass. Earlier breakthrough increases pre-excitation before normal conduction catches up.':'P onset → His includes atrial and AV conduction. It is not AV-node delay alone.';
     $('sim-mechanism-title').textContent=choices[id][0];
-    $('sim-mechanism-copy').textContent=[sc.mechanism,sc.ecg].filter(Boolean).join(' ');
+    $('sim-mechanism-copy').textContent=sc.mechanism;$('sim-mechanism-ecg').textContent=sc.ecg;
+    showContext(0);
     rebuild(); syncLead();
   }
   function rebuild() {

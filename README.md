@@ -2,6 +2,8 @@
 
 ECG Studio is a static, browser-based educational simulator for cardiac conduction and ECG lead projections. Start it locally with `./run`, then open the URL printed by the launcher.
 
+The Simulation page keeps the heart, ECG, playback, and a compact explanation in one viewport. Use the explanation arrows to switch between the current electrical phase, the selected mechanism, and its ECG effect.
+
 ## Checks
 
 Run the three dependency-free Node checks from the project root:
@@ -16,7 +18,7 @@ node scripts/check-simulator-quiz.cjs
 
 Open **Quiz → Start quiz** for six cases in shuffled order. Inspect the anatomical heart, electrical model, conduction map, and synchronized ECG. Playback and scrubbing remain available while scenario labels and teaching hints are hidden.
 
-Use **Choose answer** in the top bar, select a mechanism, and check your answer. Each case is scored once and includes an explanation. **Back to study** restores your previous scenario, parameters, playback, and view. Scores last for the current round; they are not uploaded or saved across reloads.
+Use **Choose answer** in the top bar, select a mechanism, and check your answer. Each case is scored once; **Why this answer?** returns to the simulation with its inline mechanism explanation. Explanations stay hidden until an answer is checked. **Back to study** restores your previous scenario, parameters, playback, view, and explanation page. Scores last for the current round; they are not uploaded or saved across reloads.
 
 ## Educational scope and assets
 
