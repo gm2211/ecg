@@ -208,6 +208,9 @@
     {id:'septum', center:[.015,-.35,.05], radius:[.065,.56,.32]}
   ];
   const v3 = p => new THREE.Vector3(...p);
+  // Both vectors share a point inside the schematic septum. Visibility is a
+  // rendering concern; shifting arrows toward the camera breaks rotated views.
+  const electricalOrigin = v3([0,-.18,.08]);
   function createLabel(text,position,kind='node') {
     const el = document.createElement('span'); el.className = `sim-pin ${kind}`; el.textContent = text; $('sim-labels').append(el);
     const label = {el,position:v3(position)}; labels.push(label); return label;
@@ -250,10 +253,15 @@
         if(ch.id!=='septum')createLabel(ch.id,[ch.center[0]+(ch.center[0]<0?-.32:.32),ch.center[1]-.02,.52],'chamber');
       }
       pathwayGroup = new THREE.Group(); heartGroup.add(pathwayGroup);
-      vectorArrow = new THREE.ArrowHelper(v3([1,0,0]),v3([0,-.18,.65]),.3,0xc7bcff,.10,.05); heartGroup.add(vectorArrow);
-      leadArrow = new THREE.ArrowHelper(v3([.5,-.8,0]).normalize(),v3([0,-.18,.65]),1.05,0x7687b2,.07,.025); heartGroup.add(leadArrow);
+      vectorArrow = new THREE.ArrowHelper(v3([1,0,0]),electricalOrigin,.3,0xc7bcff,.10,.05); heartGroup.add(vectorArrow);
+      leadArrow = new THREE.ArrowHelper(v3([.5,-.8,0]).normalize(),electricalOrigin,1.05,0x93bce8,.07,.025); heartGroup.add(leadArrow);
+      [leadArrow,vectorArrow].forEach((arrow,i)=>{
+        for(const part of [arrow.line,arrow.cone]) {
+          part.material.transparent=true;part.material.depthTest=false;part.material.depthWrite=false;part.renderOrder=8+i;
+        }
+      });
       createLabel('SA',[-.7,.97,.26]); createLabel('AV',[-.19,.21,.4]); createLabel('His',[.16,.015,.45]);
-      selectedLeadLabel=createLabel('II +',[.7,-.97,.65],'lead');
+      selectedLeadLabel=createLabel('II +',electricalOrigin.toArray(),'lead');
       mechanismLabel=createLabel('',[.85,.15,.5]);
       loadAnatomy();
       resetView();
@@ -432,7 +440,7 @@
   function syncLead() {
     const caption={I:'left lateral',II:'inferior view',III:'inferior view',aVR:'right shoulder',aVL:'left lateral',aVF:'inferior view',V1:'right precordial',V2:'septal view',V3:'anterior view',V4:'anterior view',V5:'left lateral',V6:'left lateral'};
     $('sim-selected-lead').textContent=`${state.lead} · ${caption[state.lead]}`; canvases[0].setAttribute('aria-label',`Lead ${state.lead} simulated ECG`);
-    if(leadArrow) { const dir=leadDirection(); leadArrow.setDirection(dir); selectedLeadLabel.position.copy(v3([0,-.18,.65]).add(dir.multiplyScalar(1.16))); selectedLeadLabel.el.textContent=`${state.lead} +`; }
+    if(leadArrow) { const dir=leadDirection(); leadArrow.setDirection(dir); selectedLeadLabel.position.copy(electricalOrigin).addScaledVector(dir,1.16); selectedLeadLabel.el.textContent=`${state.lead} +`;selectedLeadLabel.el.title=`Lead ${state.lead}: positive sensing direction`; }
     buildTraceCache();
   }
   function setScenario(id) {
