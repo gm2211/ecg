@@ -1,0 +1,24 @@
+#!/bin/bash
+# ECG Explorer launcher — run from terminal: ./run
+# Stays in current terminal, foreground server, Ctrl+C to stop.
+cd "$(dirname "$0")"
+
+PORT=${PORT:-8765}
+if lsof -i :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
+  for P in 8766 8767 8768 8769 8080 8081; do
+    if ! lsof -i :$P -sTCP:LISTEN -t >/dev/null 2>&1; then
+      PORT=$P
+      break
+    fi
+  done
+fi
+
+URL="http://localhost:$PORT/"
+echo "ECG Explorer → $URL  (Ctrl+C to stop)"
+
+# Open browser only if stdin is a terminal AND --no-browser not passed
+if [ -t 0 ] && [ "$1" != "--no-browser" ]; then
+  (sleep 0.4 && open "$URL") &
+fi
+
+exec python3 -m http.server "$PORT"

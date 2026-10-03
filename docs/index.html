@@ -1,0 +1,3007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECG Studio — Electrical Simulator</title>
+<style>
+/* ── Color tokens ── */
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #21262d;
+  --border:    #30363d;
+  --text:      #e6edf3;
+  --text-dim:  #8b949e;
+  --accent:    #58a6ff;
+  --green:     #3fb950;
+  --orange:    #f85149;
+  --yellow:    #ffd166;
+  --cyan:      #4ad7ff;
+  --ecg-line:  #00ff7f;
+  --ecg-grid:  rgba(255,150,150,0.18);
+  --abnormal:  #3fb950;
+  --missed:    #8b949e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  user-select: none;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+#header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  z-index: 10;
+}
+#header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.hctl { display: flex; align-items: center; gap: 6px; }
+.hctl label { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+.hctl select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.hctl input[type=range] { width: 110px; cursor: pointer; accent-color: var(--accent); }
+#bpm-readout {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ff6b8a;
+  letter-spacing: -1px;
+  min-width: 90px;
+  line-height: 1;
+}
+#bpm-unit { font-size: 13px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+#speed-readout {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 36px;
+}
+.sep { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
+.hbtn { background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+        padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.hbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Main layout ── 3D + ECG stacked vertically, info pane on the right */
+#main {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    "scene info"
+    "ecg   info";
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+#scene-pane { grid-area: scene; }
+#ecg-pane   { grid-area: ecg;   border-left: none; border-top: 1px solid var(--border); }
+#info-pane  { grid-area: info;  border-left: 1px solid var(--border); }
+@media (max-width: 900px) {
+  #main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 340px 1fr auto;
+    grid-template-areas: "scene" "ecg" "info";
+    overflow-y: auto;
+  }
+  body { overflow: auto; height: auto; min-height: 100vh; }
+  #info-pane { border-left: none; border-top: 1px solid var(--border); }
+}
+.ecg-cell { min-height: 60px; min-width: 80px; }
+.ecg-cell.hidden-6lead { opacity: 0.35; filter: grayscale(0.6); pointer-events: none; }
+.ecg-cell.hidden-6lead.abnormal { opacity: 0.55; }
+.ecg-cell.hidden-6lead .cell-label::after { content: ' (hidden)'; color: var(--text-dim); font-weight: 400; font-size: 9px; }
+
+/* ── 3D pane ── */
+#scene-pane {
+  position: relative;
+  overflow: hidden;
+  background: #070d14;
+}
+#scene-pane canvas { display: block; width: 100%; height: 100%; }
+#label-container {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.label-pin {
+  position: absolute;
+  background: rgba(13,17,23,0.85);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: auto;
+  cursor: pointer;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  transition: border-color 0.15s;
+  z-index: 5;
+}
+.label-pin:hover { border-color: var(--accent); }
+.label-pin.limb   { color: var(--yellow); border-color: rgba(255,209,102,0.4); }
+.label-pin.precordial { color: var(--cyan); border-color: rgba(74,215,255,0.4); }
+#infarct-tag {
+  position: absolute;
+  background: rgba(248,81,73,0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+  display: none;
+  letter-spacing: 1px;
+  transform: translate(-50%, -100%);
+}
+
+/* ── ECG pane ── */
+#ecg-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+#ecg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: repeat(4, 1fr);
+  flex: 1;
+  gap: 4px;                       /* visible separation between leads */
+  padding: 4px;
+  background: #1a1f1d;            /* dark gutter color showing through gap + padding */
+  min-height: 0;
+}
+#ecg-grid.mode-6 { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); }
+.ecg-cell {
+  position: relative;
+  border: 2px solid #2a3a32;      /* thicker dark border around each lead */
+  border-radius: 3px;
+  overflow: hidden;
+  background: #fff5ec;            /* match ECG paper bg so border reads cleanly */
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.ecg-cell:hover { border-color: var(--accent); }
+.ecg-cell.abnormal { border-color: #d8242a; box-shadow: 0 0 0 1px #d8242a inset; }
+.ecg-cell.missed   { border-color: var(--missed); opacity: 0.5; }
+.ecg-cell.selected {
+  border-color: var(--accent);
+  /* outline doesn't affect layout — keep border-width = 1px so canvas size stays stable */
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  box-shadow: 0 0 14px rgba(88,166,255,0.45) inset;
+}
+.ecg-cell.selected.abnormal {
+  outline-color: var(--accent);
+  box-shadow: 0 0 14px rgba(63,185,80,0.55) inset;
+}
+.ecg-cell canvas   { display: block; width: 100%; height: 100%; }
+.cell-label {
+  position: absolute; top: 6px; left: 8px;
+  font-size: 16px; font-weight: 900;
+  pointer-events: none;
+  letter-spacing: 0.8px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: rgba(20,28,24,0.92);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.cell-label.limb       { background: #b8860b; color: #fff; } /* goldenrod pill — limb leads */
+.cell-label.precordial { background: #1a6e8e; color: #fff; } /* teal pill — precordial leads */
+.badge {
+  position: absolute; top: 3px; right: 4px;
+  font-size: 9px; font-weight: 700;
+  padding: 1px 4px; border-radius: 2px;
+  pointer-events: none;
+}
+.badge.abnormal { background: #d8242a; color: #fff; }
+.badge.missed   { background: var(--missed); color: #fff; }
+
+/* ── Info pane ── */
+#info-pane {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  user-select: text;
+}
+#info-pane h2 { font-size: 14px; color: var(--accent); }
+#info-body { font-size: 12px; line-height: 1.6; color: var(--text-dim); }
+#miss-summary {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+#miss-summary strong { color: var(--text); }
+
+/* ── ECG focus overlay (double-click a lead to enlarge) ── */
+#ecg-focus-overlay {
+  position: fixed; inset: 0;
+  background: rgba(2,6,2,0.88);
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+#ecg-focus-card {
+  width: min(92vw, 1400px);
+  height: min(78vh, 720px);
+  background: #050a05;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 20px 80px rgba(0,0,0,0.7);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#ecg-focus-header {
+  background: var(--surface2);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+#ecg-focus-title { font-weight: 700; font-size: 18px; color: var(--accent); }
+#ecg-focus-hint  { font-size: 11px; color: var(--text-dim); flex: 1; }
+#ecg-focus-close {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px;
+}
+#ecg-focus-close:hover { color: var(--text); }
+#ecg-focus-canvas { flex: 0 1 auto; height: 55%; min-height: 200px; display: block; width: 100%; }
+#ecg-focus-finding {
+  flex: 1 1 auto;
+  padding: 18px 28px 22px; font-size: 15px; line-height: 1.7;
+  color: #e6ebe8; border-top: 1px solid var(--border);
+  background: var(--surface2);
+  min-height: 180px; max-height: 45%; overflow-y: auto;
+}
+#ecg-focus-finding ul { margin: 6px 0 0 0; padding-left: 22px; }
+#ecg-focus-finding li { margin-bottom: 6px; }
+#ecg-focus-finding span { display: inline-block; }
+#ecg-focus-controls {
+  background: var(--surface);
+  padding: 8px 16px;
+  display: flex; align-items: center; gap: 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+#ecg-focus-controls label {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-dim);
+}
+#ecg-focus-controls input[type=range] { width: 120px; }
+#ecg-focus-prev, #ecg-focus-next {
+  font-size: 18px; padding: 2px 10px; line-height: 1;
+}
+
+/* ── Lead info popup ── */
+#lead-popup {
+  position: fixed;
+  top: 120px; left: 60px;
+  width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  z-index: 100;
+  display: none;
+  overflow: hidden;
+}
+#popup-titlebar {
+  background: var(--surface2);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+#popup-titlebar:active { cursor: grabbing; }
+#popup-title { font-weight: 700; font-size: 13px; color: var(--accent); }
+#popup-close {
+  background: none; border: none;
+  color: var(--text-dim); cursor: pointer; font-size: 16px;
+  line-height: 1; padding: 0 2px;
+}
+#popup-close:hover { color: var(--text); }
+#popup-body {
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  user-select: text;
+}
+#popup-body strong { color: var(--text); }
+#popup-body .formula {
+  background: var(--surface2);
+  border-left: 3px solid var(--accent);
+  padding: 6px 10px;
+  margin: 6px 0;
+  border-radius: 0 4px 4px 0;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--cyan);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Quiz drag-select layer per cell ── */
+.quiz-controls { display: none; }
+.quiz-result-correct { box-shadow: inset 0 0 0 3px rgba(63,185,80,0.65) !important; }
+.quiz-result-wrong   { box-shadow: inset 0 0 0 3px rgba(248,81,73,0.70) !important; }
+.ecg-cell.quiz-mode canvas { cursor: crosshair; }
+.quiz-popup {
+  position: fixed; z-index: 500;
+  background: #0e1612; border: 1px solid #3a5a4a; border-radius: 8px;
+  padding: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.7);
+  display: flex; flex-direction: column; gap: 4px; min-width: 180px;
+}
+.quiz-popup .qpop-title {
+  color: #7ab8ff; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
+}
+.quiz-popup button {
+  background: #1a2620; color: #cdd9d3; border: 1px solid #3a5a4a;
+  border-radius: 4px; padding: 6px 10px; font-size: 12px; text-align: left;
+  cursor: pointer;
+}
+.quiz-popup button:hover { background: #243430; border-color: var(--accent); }
+.quiz-popup .qpop-cancel {
+  background: transparent; color: var(--text-dim); border: none; padding: 4px;
+  font-size: 11px; text-align: center; margin-top: 2px;
+}
+
+/* Quiz submit & results */
+#quiz-bar { display: none; background: var(--surface2); border-top: 1px solid var(--border);
+            padding: 8px 14px; flex-shrink: 0; align-items: center; gap: 12px; }
+#quiz-bar.visible { display: flex; }
+#btn-submit-quiz { background: var(--accent); color: #000; border: none;
+                   padding: 5px 14px; border-radius: 4px; font-size: 12px;
+                   font-weight: 600; cursor: pointer; }
+#btn-submit-quiz:hover { opacity: 0.85; }
+#btn-next-quiz { background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+                 padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+                 display: none; }
+#btn-next-quiz:hover { border-color: var(--accent); color: var(--accent); }
+#quiz-score-display { font-size: 13px; font-weight: 600; color: var(--text); }
+</style>
+<link rel="stylesheet" href="studio.css?v=20261002-bpm-width">
+<link rel="stylesheet" href="simulator.css">
+</head>
+<body data-workspace="simulator">
+
+<!-- ── Header ── -->
+<div id="header">
+  <div class="studio-brand"><span class="brand-mark" aria-hidden="true">⌁</span><div><h1>ECG <span>Studio</span></h1><p class="studio-subtitle">Anatomy meets electricity</p></div></div>
+
+  <div class="hctl">
+    <label for="sel-scenario">Scenario</label>
+    <select id="sel-scenario">
+      <option value="normal">Normal Sinus Rhythm</option>
+      <option value="inferior">Inferior MI</option>
+      <option value="anterior">Anterior MI</option>
+      <option value="septal">Septal MI</option>
+      <option value="lateral">Lateral MI</option>
+      <option value="posterior">Posterior MI</option>
+      <option value="rv">Right Ventricular MI</option>
+      <option value="afib">Atrial Fibrillation</option>
+      <option value="vfib">Ventricular Fibrillation</option>
+    </select>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="hctl">
+    <label for="sel-leads">Leads</label>
+    <select id="sel-leads">
+      <option value="12">12-Lead</option>
+      <option value="6">6-Lead</option>
+    </select>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="hctl" style="gap:8px">
+    <span id="bpm-readout">75</span><span id="bpm-unit">BPM</span>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <label for="sl-bpm" style="font-size:10px">Heart rate</label>
+      <input type="range" id="sl-bpm" min="40" max="180" value="75" step="1">
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="hctl">
+    <label for="sl-speed">Speed</label>
+    <input type="range" id="sl-speed" min="0.1" max="2.0" value="0.5" step="0.05">
+    <span id="speed-readout">0.5×</span>
+  </div>
+
+  <div class="sep"></div>
+
+  <button id="btn-pause" class="hbtn" title="Pause / resume the live trace (useful in quiz mode to examine still frames)">⏸ Pause</button>
+
+  <div class="sep"></div>
+
+  <div class="hctl">
+    <label for="sel-mode">Mode</label>
+    <select id="sel-mode">
+      <option value="study">Study</option>
+      <option value="quiz">Quiz</option>
+    </select>
+  </div>
+
+  <button id="btn-variation" class="hbtn" title="Generate new waveform shapes at the same heart rate">↻ Variation</button>
+</div>
+
+<!-- ── Main ── -->
+<div id="main">
+  <!-- 3D Scene -->
+  <div id="scene-pane">
+    <div class="scene-heading"><span class="eyebrow">CARDIAC ANATOMY</span><h2>A different perspective.</h2><p>Explore the heart behind every lead.</p></div>
+    <div class="scene-toolbar"><div class="scene-mode" role="group" aria-label="Anatomy view"><button data-view="heart" aria-pressed="true">Heart</button><button data-view="electrodes" aria-pressed="false">Electrodes</button></div></div>
+    <div class="scene-footer"><div><span class="live-dot"></span><span id="scene-caption">Anatomical heart · textured model</span><small>Drag to orbit · scroll to zoom</small></div><div class="scene-actions"><button id="btn-rotate" aria-pressed="false" title="Toggle automatic rotation">Orbit</button><button id="btn-reset-view" title="Reset camera position">Reset view</button></div></div>
+    <div id="body-status" role="status" aria-live="polite" hidden>Loading anatomical torso…</div>
+    <div id="model-status" role="status" aria-live="polite">Loading anatomical model…</div>
+    <a class="model-credit" href="https://sketchfab.com/3d-models/realistic-human-heart-3f8072336ce94d18b3d0d055a1ece089" target="_blank" rel="noopener noreferrer">Heart by neshallads · CC BY 4.0</a>
+    <a id="body-credit" class="model-credit body-credit" href="https://hubmapconsortium.github.io/ccf/pages/ccf-3d-reference-library.html" target="_blank" rel="noopener noreferrer" hidden>Body: Human Reference Atlas · CC BY 4.0</a>
+    <div id="label-container"></div>
+    <div id="infarct-tag">INFARCT</div>
+  </div>
+
+  <!-- ECG strips -->
+  <div id="ecg-pane">
+    <div class="trace-heading"><div><span class="eyebrow">ELECTRICAL ACTIVITY</span><h2>Every angle. One heartbeat.</h2></div><span class="trace-help">Select a lead to explore<br>Double-click to enlarge</span></div><div id="ecg-grid"></div>
+    <div id="quiz-bar">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim)">
+        Diagnosis
+        <select aria-label="Diagnosis" id="quiz-diagnosis" style="padding:4px 8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <option value="">— pick one —</option>
+          <option value="normal">Normal sinus rhythm (no MI)</option>
+          <option value="inferior">Inferior MI (RCA)</option>
+          <option value="anterior">Anterior MI (LAD)</option>
+          <option value="septal">Septal MI</option>
+          <option value="lateral">Lateral MI (LCx)</option>
+          <option value="posterior">Posterior MI</option>
+          <option value="rv">Right Ventricular MI</option>
+          <option value="afib">Atrial Fibrillation</option>
+          <option value="vfib">Ventricular Fibrillation</option>
+        </select>
+      </label>
+      <button id="btn-submit-quiz">Submit Answer</button>
+      <span id="quiz-score-display"></span>
+      <button id="btn-next-quiz">Next Scenario →</button>
+    </div>
+  </div>
+
+  <!-- Info pane -->
+  <div id="info-pane">
+    <h2 id="info-title">Normal Sinus Rhythm</h2>
+    <div id="info-body"></div>
+    <div id="miss-summary"></div>
+  </div>
+</div>
+
+<!-- Lead info popup -->
+<div id="lead-popup" role="dialog" aria-labelledby="popup-title" tabindex="-1">
+  <div id="popup-titlebar">
+    <span id="popup-title">Lead I</span>
+    <button id="popup-close">×</button>
+  </div>
+  <div id="popup-body"></div>
+</div>
+
+<div id="ecg-focus-overlay" style="display:none;">
+  <div id="ecg-focus-card">
+    <div id="ecg-focus-header">
+      <button id="ecg-focus-prev" class="hbtn" title="Previous lead">‹</button>
+      <span id="ecg-focus-title">Lead</span>
+      <button id="ecg-focus-next" class="hbtn" title="Next lead">›</button>
+      <span id="ecg-focus-hint">double-click any lead to focus · ← → to switch · Space to pause · Esc to close</span>
+      <button id="ecg-focus-close">×</button>
+    </div>
+    <div id="ecg-focus-controls">
+      <label>BPM <span id="focus-bpm-readout">75</span>
+        <input type="range" id="focus-sl-bpm" min="40" max="180" value="75" step="1">
+      </label>
+      <label>Speed <span id="focus-speed-readout">0.5×</span>
+        <input type="range" id="focus-sl-speed" min="0.1" max="2.0" value="0.5" step="0.05">
+      </label>
+      <button id="focus-btn-pause" class="hbtn" title="Pause / play (Space)">⏸ Pause</button>
+    </div>
+    <canvas id="ecg-focus-canvas"></canvas>
+    <div id="ecg-focus-finding"></div>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="lib/GLTFLoader.js"></script>
+<script src="lib/RoomEnvironment.js"></script>
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────
+//  CONSTANTS & DATA
+// ─────────────────────────────────────────────
+
+const LEADS_12 = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'];
+const LEADS_6  = ['I','II','III','aVR','aVL','aVF'];
+
+// RL is the neutral electrode, not a diagnostic lead.
+const ELECTRODE_LEADS = {
+  RA:'aVR', LA:'aVL', LL:'aVF',
+  V1:'V1', V2:'V2', V3:'V3', V4:'V4', V5:'V5', V6:'V6',
+};
+
+// Diagrammatic chest landmarks, projected onto the actual skin mesh after load.
+// Limb electrodes use a torso projection; precordials wrap around the left chest.
+const ELEC_DEFS = {
+  RA: { pos: [-.56, .52, .40], label:'RA', type:'limb' },
+  LA: { pos: [ .56, .52, .40], label:'LA', type:'limb' },
+  RL: { pos: [-.48,-.88, .50], label:'RL', type:'limb' },
+  LL: { pos: [ .48,-.88, .50], label:'LL', type:'limb' },
+  V1: { pos: [-.065,.18, .55], label:'V1', type:'precordial' },
+  V2: { pos: [ .065,.18, .55], label:'V2', type:'precordial' },
+  V3: { pos: [ .22, .09, .55], label:'V3', type:'precordial' },
+  V4: { pos: [ .38, 0, .50], label:'V4', type:'precordial' },
+  V5: { pos: [ .64, 0, .28], label:'V5', type:'precordial' },
+  V6: { pos: [ .72, 0, .05], label:'V6', type:'precordial' },
+};
+
+// Wilson central terminal components
+// Lead computation: { pos: electrode(s) contributing positively, neg: negative side }
+const LEAD_COMPUTATION = {
+  'I':   { type:'bipolar',   pos:['LA'], neg:['RA'] },
+  'II':  { type:'bipolar',   pos:['LL'], neg:['RA'] },
+  'III': { type:'bipolar',   pos:['LL'], neg:['LA'] },
+  'aVR': { type:'augmented', pos:['RA'], neg:['LA','LL'], label:'aVR = RA − (LA+LL)/2' },
+  'aVL': { type:'augmented', pos:['LA'], neg:['RA','LL'], label:'aVL = LA − (RA+LL)/2' },
+  'aVF': { type:'augmented', pos:['LL'], neg:['RA','LA'], label:'aVF = LL − (RA+LA)/2' },
+  'V1':  { type:'precordial', elec:'V1', neg:['RA','LA','LL'] },
+  'V2':  { type:'precordial', elec:'V2', neg:['RA','LA','LL'] },
+  'V3':  { type:'precordial', elec:'V3', neg:['RA','LA','LL'] },
+  'V4':  { type:'precordial', elec:'V4', neg:['RA','LA','LL'] },
+  'V5':  { type:'precordial', elec:'V5', neg:['RA','LA','LL'] },
+  'V6':  { type:'precordial', elec:'V6', neg:['RA','LA','LL'] },
+};
+
+// Illustrative surface regions in normalized mesh coordinates. Each anchor was
+// raycast onto the imported surface; these are not clinical segmentations.
+const TERRITORY = {
+  inferior:  { center:[ .10,-.43, .25], r:.10, motion:'hypokinetic' },
+  anterior:  { center:[ .12,-.12, .32], r:.10, motion:'akinetic' },
+  septal:    { center:[-.07,-.05, .35], r:.08, motion:'akinetic' },
+  lateral:   { center:[ .32,-.20, .17], r:.09, motion:'hypokinetic' },
+  posterior: { center:[ .06,-.12,-.34], r:.09, motion:'hypokinetic' },
+  rv:        { center:[-.22,-.16, .31], r:.10, motion:'dyskinetic' },
+};
+
+// Scenario definitions
+const SCENARIOS = {
+  normal: {
+    title: 'Normal Sinus Rhythm',
+    body: 'All 12 leads show normal sinus rhythm. P waves are upright in I, II, aVF. PR interval 120–200 ms. QRS < 120 ms. T waves concordant with QRS.',
+    st: { I:0,II:0,III:0,aVR:0,aVL:0,aVF:0,V1:0,V2:0,V3:0,V4:0,V5:0,V6:0 },
+    abnormal: [],
+    territory: null,
+    missNote6: 'All 6 limb leads are normal. No ST changes visible in 6-lead mode. 12-lead adds precordial coverage — no difference here.',
+    miss12: '',
+  },
+  inferior: {
+    title: 'Inferior MI (RCA Occlusion)',
+    body: 'ST elevation in II, III, aVF indicates occlusion of the right coronary artery (RCA) supplying the inferior wall. Reciprocal ST depression in I and aVL.',
+    st: { I:-0.8,II:2.2,III:2.5,aVR:0,aVL:-1.0,aVF:2.0,V1:0.3,V2:0,V3:0,V4:0,V5:0,V6:0 },
+    abnormal: ['II','III','aVF','I','aVL'],
+    territory: 'inferior',
+    missNote6: '6-lead captures II, III, aVF (ST elevation) and I, aVL (reciprocal depression) — inferior MI is fully visible in limb leads only.',
+    miss12: 'In 12-lead: V1 shows slight ST elevation suggesting RV involvement. Precordials otherwise normal.',
+  },
+  anterior: {
+    title: 'Anterior MI (LAD Occlusion)',
+    body: 'ST elevation in V1–V4 with Q waves indicates proximal LAD occlusion affecting the anterior wall. Reciprocal depression in inferior leads.',
+    st: { I:0.8,II:-0.5,III:-0.8,aVR:0,aVL:1.0,aVF:-0.5,V1:1.5,V2:2.8,V3:3.0,V4:2.2,V5:1.0,V6:0.3 },
+    abnormal: ['V1','V2','V3','V4','V5','aVL'],
+    territory: 'anterior',
+    missNote6: '6-lead mode MISSES the diagnostic ST elevation in V1–V4. Only aVL shows subtle change. Anterior MI is largely invisible in 6-lead!',
+    miss12: '12-lead reveals extensive anterior ST elevation across V1–V5, confirming proximal LAD occlusion.',
+  },
+  septal: {
+    title: 'Septal MI (LAD Diagonal)',
+    body: 'ST elevation in V1–V2 with loss of septal Q waves in I and aVL indicates septal branch occlusion.',
+    st: { I:0.3,II:0,III:0,aVR:0,aVL:0.5,aVF:0,V1:1.8,V2:2.0,V3:1.2,V4:0.4,V5:0,V6:0 },
+    abnormal: ['V1','V2','V3'],
+    territory: 'septal',
+    missNote6: '6-lead mode MISSES V1–V3 ST elevation entirely. Septal MI appears normal on 6-lead — a dangerous miss!',
+    miss12: '12-lead shows characteristic V1–V2 ST elevation. Septal involvement confirmed.',
+  },
+  lateral: {
+    title: 'Lateral MI (LCx Occlusion)',
+    body: 'ST elevation in I, aVL, V5–V6 with reciprocal changes in II, III, aVF indicates lateral wall MI from circumflex artery occlusion.',
+    st: { I:1.5,II:-0.8,III:-1.0,aVR:0,aVL:2.0,aVF:-0.8,V1:0,V2:0,V3:0,V4:0.5,V5:1.8,V6:2.0 },
+    abnormal: ['I','aVL','V5','V6'],
+    territory: 'lateral',
+    missNote6: '6-lead captures I and aVL elevation. MISSES high lateral V5–V6 elevation — partial diagnosis only without precordials.',
+    miss12: '12-lead completes the picture with V5–V6 elevation, confirming lateral involvement.',
+  },
+  posterior: {
+    title: 'Posterior MI (LCx/PDA)',
+    body: 'Posterior MI shows reciprocal changes: ST depression and tall R waves in V1–V3. Direct changes only visible in posterior leads (V7–V9, not shown).',
+    st: { I:0,II:0,III:0,aVR:0,aVL:0,aVF:0,V1:-2.0,V2:-2.5,V3:-1.8,V4:-0.8,V5:0,V6:0 },
+    abnormal: ['V1','V2','V3'],
+    territory: 'posterior',
+    extraR: { V1:1.0, V2:0.8, V3:0.4 },
+    missNote6: '6-lead shows NO changes in posterior MI. This diagnosis is COMPLETELY INVISIBLE in 6-lead mode — critical miss!',
+    miss12: '12-lead reveals ST depression in V1–V3 with tall R waves — classic reciprocal posterior MI pattern.',
+  },
+  rv: {
+    title: 'Right Ventricular MI',
+    body: 'RV MI accompanies inferior MI (RCA occlusion). ST elevation in V1 with inferior ST elevation. Requires right-sided leads (V3R, V4R) for confirmation.',
+    st: { I:-0.5,II:1.8,III:2.0,aVR:0,aVL:-0.8,aVF:1.8,V1:1.5,V2:0.5,V3:0,V4:-0.3,V5:-0.3,V6:-0.3 },
+    abnormal: ['II','III','aVF','V1'],
+    territory: 'rv',
+    missNote6: '6-lead captures inferior elevation (II, III, aVF). MISSES V1 elevation that signals RV involvement — diagnosis incomplete.',
+    miss12: '12-lead reveals V1 ST elevation alongside inferior changes — key RV MI indicator.',
+  },
+  afib: {
+    title: 'Atrial Fibrillation (rhythm)',
+    body: 'Irregularly irregular rhythm. No identifiable P waves — replaced by chaotic low-amplitude fibrillation waves. R-R intervals vary unpredictably. Ventricular response usually 100–160 bpm if untreated. Risk: stroke from atrial clot formation. NOTE: This is a rhythm diagnosis, not a localized infarct — the abnormality is visible on any single lead. The "need 12-lead" rule applies to localizing MI walls, NOT to diagnosing rhythm problems.',
+    st: { I:0,II:0,III:0,aVR:0,aVL:0,aVF:0,V1:0,V2:0,V3:0,V4:0,V5:0,V6:0 },
+    abnormal: ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'],
+    territory: null,
+    rhythm: 'afib',
+    missNote6: '6-lead is FULLY sufficient for diagnosing afib. So is a single-lead telemetry monitor or even an Apple Watch ECG. Lead count matters for MI localization, not for rhythm.',
+    miss12: '12-lead adds nothing diagnostic for afib over 6-lead — both show the same irregularly-irregular rhythm with absent P waves.',
+  },
+  vfib: {
+    title: 'Ventricular Fibrillation (rhythm)',
+    body: 'CARDIAC ARREST. Chaotic, disorganized ventricular activity. No discernible P, QRS, or T waves — just a wandering, irregular squiggle. The heart is quivering, not pumping. Immediate defibrillation required. NOTE: Like afib, vfib is a rhythm diagnosis. It is unmistakable on a SINGLE lead — that\'s how AEDs and bedside monitors detect it. 6-lead, 12-lead, 1-lead — all see vfib equally well.',
+    st: { I:0,II:0,III:0,aVR:0,aVL:0,aVF:0,V1:0,V2:0,V3:0,V4:0,V5:0,V6:0 },
+    abnormal: ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'],
+    territory: null,
+    rhythm: 'vfib',
+    missNote6: '6-lead catches vfib obviously. Even a 1-lead AED monitor catches it — that\'s the whole point of AEDs. The "need 12-lead" rule is about MI wall localization, not rhythm.',
+    miss12: '12-lead adds no diagnostic value for vfib over 6-lead. The chaotic pattern is the same on every lead.',
+  },
+};
+
+// Per-lead baseline morphology parameters
+// Each lead gets unique P/QRS/T amplitudes and shapes
+const LEAD_MORPHOLOGY = {
+  'I':   { P:0.12, Q:-0.05, R:0.80, S:-0.12, T:0.22, stBase:0 },
+  'II':  { P:0.18, Q:-0.04, R:1.00, S:-0.10, T:0.28, stBase:0 },
+  'III': { P:0.10, Q:-0.06, R:0.60, S:-0.15, T:0.18, stBase:0 },
+  'aVR': { P:-0.12,Q: 0.05, R:-0.90,S: 0.10, T:-0.20,stBase:0 },
+  'aVL': { P:0.06, Q:-0.04, R:0.55, S:-0.08, T:0.14, stBase:0 },
+  'aVF': { P:0.15, Q:-0.05, R:0.85, S:-0.12, T:0.22, stBase:0 },
+  'V1':  { P:0.08, Q: 0.00, R:0.18, S:-0.90, T:-0.12,stBase:0 },
+  'V2':  { P:0.10, Q: 0.00, R:0.30, S:-0.80, T: 0.18,stBase:0 },
+  'V3':  { P:0.12, Q:-0.02, R:0.60, S:-0.55, T: 0.28,stBase:0 },
+  'V4':  { P:0.14, Q:-0.04, R:1.10, S:-0.30, T: 0.35,stBase:0 },
+  'V5':  { P:0.13, Q:-0.05, R:1.00, S:-0.18, T: 0.30,stBase:0 },
+  'V6':  { P:0.12, Q:-0.05, R:0.80, S:-0.12, T: 0.25,stBase:0 },
+};
+
+// Phase landmarks (0–1 within one beat)
+const PH = {
+  Pstart:0.05, Ppeak:0.12, Pend:0.20,
+  PRseg:0.22,
+  Qpeak:0.26, Rpeak:0.30, Speak:0.34,
+  Jpoint:0.38, Tend:0.60,
+  Tpeak:0.50,
+};
+
+// Gaussian helper
+function gauss(x, mu, sigma, amp) {
+  return amp * Math.exp(-0.5 * ((x - mu) / sigma) ** 2);
+}
+
+// One coherent simulated subject per variation, stable from beat to beat.
+// These are illustrative contours, not a diagnostic or validated ECG model.
+let variationSerial = 0;
+function createMorphologyVariation() {
+  const profile = variationSerial++ % 3;
+  const jitter = (center, spread) => center + (Math.random() - .5) * spread;
+  return {
+    voltage: jitter([.72, 1.18, .92][profile], .10),
+    pGain: jitter([.85, 1.05, .72][profile], .12),
+    tGain: jitter([1.12, .68, 1.35][profile], .12),
+    pWidth: jitter([.90, 1.05, .80][profile], .06),
+    qrsWidth: jitter([.80, .95, 1.04][profile], .04),
+    tRise: jitter([1.18, .86, 1.24][profile], .08),
+    tFall: jitter([.76, .94, .80][profile], .06),
+    sGain: jitter([1.18, .72, 1.02][profile], .12),
+    transition: (Math.random() - .5) * 1.1,
+    baseline: .012 + Math.random() * .012,
+    noise: .002 + Math.random() * .004,
+    phase: Math.random() * Math.PI * 2,
+  };
+}
+
+function variedMorphology(lead) {
+  const v = activeVariation?.morphology;
+  let m = {...LEAD_MORPHOLOGY[lead]};
+  if (!v) return m;
+  // Shift the chest transition smoothly, retaining the V1-to-V6 progression.
+  if (lead.startsWith('V')) {
+    const index = Math.max(1, Math.min(6, Number(lead[1]) + v.transition));
+    const lo = Math.floor(index), hi = Math.ceil(index), f = index - lo;
+    for (const wave of ['R','S']) {
+      m[wave] = LEAD_MORPHOLOGY['V'+lo][wave] * (1-f) + LEAD_MORPHOLOGY['V'+hi][wave] * f;
+    }
+  }
+  m.P *= v.pGain;
+  m.Q *= v.voltage;
+  m.R *= v.voltage;
+  m.S *= v.voltage * v.sGain;
+  m.T *= v.tGain;
+  return m;
+}
+
+// Generate one beat worth of ECG samples
+function generateBeat(lead, scenario, nSamples) {
+  const sc = SCENARIOS[scenario];
+  const m = variedMorphology(lead);
+  const shape = activeVariation?.morphology;
+  const qrsWidth = shape?.qrsWidth ?? 1;
+  // ST units: scenario values in mm (1mm = 0.1mV); render scale ~0.15 per mm for clear visibility
+  const baseShift = (sc.st[lead] || 0);
+  const mul = (activeVariation && activeVariation.stMul && activeVariation.stMul[lead] != null)
+    ? activeVariation.stMul[lead] : 1.0;
+  const stShift = baseShift * mul * 0.18;
+  const extraR  = sc.extraR ? (sc.extraR[lead] || 0) : 0;
+  const out = new Float32Array(nSamples);
+  for (let i = 0; i < nSamples; i++) {
+    const ph = i / nSamples;
+    let v = 0;
+    // P wave
+    v += gauss(ph, PH.Ppeak, 0.035 * (shape?.pWidth ?? 1), m.P);
+    // Q
+    v += gauss(ph, PH.Rpeak + (PH.Qpeak-PH.Rpeak)*qrsWidth, 0.012*qrsWidth, m.Q);
+    // R
+    v += gauss(ph, PH.Rpeak, 0.018*qrsWidth, m.R + extraR);
+    // S
+    v += gauss(ph, PH.Rpeak + (PH.Speak-PH.Rpeak)*qrsWidth, 0.015*qrsWidth, m.S);
+    // ST elevation/depression: hold full amplitude through ST segment, taper into T
+    const stStart = PH.Jpoint;        // 0.38
+    const stPlateauEnd = PH.Tpeak - 0.06; // 0.44 — plateau through ST
+    const stTaperEnd = PH.Tend;       // 0.60 — fade by end of T
+    if (ph >= stStart && ph <= stTaperEnd) {
+      let amp;
+      if (ph <= stPlateauEnd) {
+        // Quick rise to full amplitude
+        amp = Math.min(1, (ph - stStart) / 0.02);
+      } else {
+        // Hold then taper through T
+        amp = 1 - (ph - stPlateauEnd) / (stTaperEnd - stPlateauEnd);
+      }
+      v += stShift * Math.max(0, Math.min(1, amp));
+    }
+    // T wave (mild coupling to ST direction)
+    const tWidth = ph < PH.Tpeak ? (shape?.tRise ?? 1) : (shape?.tFall ?? 1);
+    v += gauss(ph, PH.Tpeak, 0.055*tWidth, m.T + stShift * 0.2);
+    out[i] = v;
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────
+//  LEAD INFO DATABASE
+// ─────────────────────────────────────────────
+const LEAD_INFO = {
+  'I':   { formula:'I = LA − RA', desc:'Bipolar limb lead measuring potential difference between left arm (+) and right arm (−). Views the heart from 0°. Normal QRS is upright. Sensitive to lateral wall changes.' },
+  'II':  { formula:'II = LL − RA', desc:'Bipolar limb lead: left leg (+) minus right arm (−). Views heart at +60°, closest to mean cardiac axis. Usually has tallest P and R waves. Key for inferior MI.' },
+  'III': { formula:'III = LL − LA', desc:'Bipolar limb lead: left leg (+) minus left arm (−). Views at +120°. With II and aVF forms the inferior lead group. Can have variable QRS polarity.' },
+  'aVR': { formula:'aVR = RA − (LA+LL)/2', desc:'Augmented unipolar lead from right arm. Views heart from −150° — opposite most other leads. All waves normally negative (P, QRS, T). aVR elevation = LMCA or proximal LAD occlusion.' },
+  'aVL': { formula:'aVL = LA − (RA+LL)/2', desc:'Augmented unipolar lead from left arm. Views at −30°. Lateral lead companion to I. Small QRS may be normal. ST elevation in lateral MI; reciprocal depression in inferior MI.' },
+  'aVF': { formula:'aVF = LL − (RA+LA)/2', desc:'Augmented unipolar lead from left foot. Views at +90° (inferior axis). Essential for inferior MI diagnosis alongside II and III. Upright P wave confirms normal sinus rhythm.' },
+  'V1':  { formula:'V1 = chest electrode − Wilson CT', desc:'Right sternal border, 4th ICS. Normally small R then deep S (rS pattern) with inverted T. First precordial to show right heart activity. RBBB/LBBB pattern lead. Key for posterior MI (reciprocal tall R).' },
+  'V2':  { formula:'V2 = chest electrode − Wilson CT', desc:'Left sternal border, 4th ICS. Transition zone lead. Deep S normally. Largest ST changes in anterior MI. R wave progression starts here.' },
+  'V3':  { formula:'V3 = chest electrode − Wilson CT', desc:'Between V2 and V4. Transition zone — R≈S. Important for anterior/septal MI. R wave grows here in normal progression.' },
+  'V4':  { formula:'V4 = chest electrode − Wilson CT', desc:'Mid-clavicular line, 5th ICS. Typically tallest R wave (R>S). Apex of heart region. Key for anterior MI. Poor R wave progression here is significant.' },
+  'V5':  { formula:'V5 = chest electrode − Wilson CT', desc:'Anterior axillary line at V4 level. Lateral precordial lead. High voltage (LVH). R wave begins to decrease. Sensitive for lateral wall ischemia.' },
+  'V6':  { formula:'V6 = chest electrode − Wilson CT', desc:'Mid-axillary line at V4 level. Most lateral precordial lead. Lateral MI pattern with V5. Normally upright QRS. Mirror of V1 in LBBB.' },
+};
+
+// ─────────────────────────────────────────────
+//  APP STATE
+// ─────────────────────────────────────────────
+let currentScenario = 'normal';
+let leadMode = '12';
+let bpm = 75;
+let speed = 0.5;
+let activeVariation = null; // { stMul: {lead: number}, morphology: subject profile }
+let appMode = 'study';      // 'study' | 'quiz'
+let quizRevealed = false;   // true after Submit in quiz mode → ST band + ghost shown
+let isPaused = false;       // pause flag (animation continues but ECG buffer stops advancing)
+// Quiz drag-select state — { lead: [{ x1, x2, label }, ...] }, x in canvas-pixel space
+let quizSelections = {};
+const QUIZ_LABELS = {
+  injury:     { text: 'ST elevation (injury)',  color: '#f85149' },
+  reciprocal: { text: 'ST depression (mirror)', color: '#3b82f6' },
+  no_p:       { text: 'No P wave (atrial issue)', color: '#a855f7' },
+  irregular:  { text: 'Irregular rhythm',         color: '#eab308' },
+  chaotic:    { text: 'Chaotic / no QRS',         color: '#ef4444' },
+  qwave:      { text: 'Pathological Q wave',      color: '#f97316' },
+  tinvert:    { text: 'T wave inversion',         color: '#06b6d4' },
+};
+
+// ECG ring buffers
+const SAMPLE_RATE = 300; // samples/sec displayed
+const WINDOW_SEC  = 3;
+const WINDOW_SAMPLES = SAMPLE_RATE * WINDOW_SEC;
+const ecgBuffers = {};
+const healthyBuffers = {};   // parallel ring buffer of "healthy" sample at same phase, for ghost overlay
+LEADS_12.forEach(l => {
+  ecgBuffers[l]      = new Float32Array(WINDOW_SAMPLES);
+  healthyBuffers[l]  = new Float32Array(WINDOW_SAMPLES);
+});
+// Parallel buffer of per-sample beat phase (0..1) — used by drawEcgStrip to highlight
+// the ST-segment region of each visible beat.
+const phaseBuffer = new Float32Array(WINDOW_SAMPLES);
+
+// Clock
+const clock = { t: 0, prevT: performance.now() / 1000 };
+
+// ─────────────────────────────────────────────
+//  THREE.JS SCENE SETUP
+// ─────────────────────────────────────────────
+// Studio lighting and a deliberately simplified anatomical teaching model.
+const scenePaneEl = document.getElementById('scene-pane');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = .92;
+renderer.physicallyCorrectLights = true;
+renderer.setClearColor(0x151d2c, 0);
+renderer.domElement.setAttribute('aria-label', 'Interactive 3D heart. Drag to rotate and scroll to zoom.');
+scenePaneEl.insertBefore(renderer.domElement, scenePaneEl.firstChild);
+const scene = new THREE.Scene();
+const pmremGen = new THREE.PMREMGenerator(renderer);
+const room = new THREE.RoomEnvironment();
+scene.environment = pmremGen.fromScene(room, 0.06).texture;
+pmremGen.dispose();
+const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.085;
+controls.zoomSpeed = 0.45;
+controls.rotateSpeed = 0.6;
+controls.enablePan = false;
+controls.minDistance = 1.35;
+controls.maxDistance = 7;
+controls.autoRotateSpeed = 0.65;
+const keyLight = new THREE.DirectionalLight(0xffe2d5, 2.2);
+keyLight.position.set(-3, 4, 5);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffece4, 1.25);
+fillLight.position.set(3, -1, 3);
+scene.add(fillLight);
+const rimLight = new THREE.DirectionalLight(0xffe9d9, 1.6);
+rimLight.position.set(1, 3, -3);
+scene.add(rimLight);
+scene.add(new THREE.HemisphereLight(0xc4d6fa, 0x352333, 0.45));
+
+// CC BY 4.0 textured anatomical mesh; see assets/ATTRIBUTION.md.
+const heartPivot = new THREE.Group();
+heartPivot.position.set(0, .07, 0);
+scene.add(heartPivot);
+const heartUniforms = {
+  heartBeat: {value: 0},
+  territoryCenter: {value: new THREE.Vector3()},
+  territoryRadius: {value: .22},
+  territoryStrength: {value: 0},
+  territoryMotion: {value: 1},
+};
+let heartLoading = false;
+function loadHeart() {
+  if (heartLoading) return;
+  heartLoading = true;
+  const status = document.getElementById('model-status');
+  status.hidden = false;
+  status.innerHTML = '<span class="model-spinner" aria-hidden="true"></span><span>Loading anatomical model…</span>';
+  new THREE.GLTFLoader().load('assets/heart.glb', gltf => {
+    gltf.scene.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(gltf.scene);
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const scale = 1.32 / Math.max(size.x, size.y, size.z);
+    const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    gltf.scene.traverse(node => {
+      if (!node.isMesh) return;
+      const geometry = node.geometry.clone();
+      geometry.applyMatrix4(node.matrixWorld);
+      geometry.translate(-center.x, -center.y, -center.z);
+      geometry.scale(scale, scale, scale);
+      const source = node.material;
+      const material = new THREE.MeshPhysicalMaterial({
+        map: source.map, normalMap: source.normalMap,
+        normalScale: new THREE.Vector2(.8, .8),
+        roughnessMap: source.roughnessMap, roughness: .88,
+        metalness: 0, envMapIntensity: .52,
+        clearcoat: .12, clearcoatRoughness: .34,
+        side: THREE.DoubleSide,
+      });
+      [material.map, material.normalMap, material.roughnessMap].forEach(tex => {
+        if (tex) { tex.anisotropy = anisotropy; tex.needsUpdate = true; }
+      });
+      // Small, continuous deformation preserves the sculpt and attached vessels.
+      // Territory emphasis is illustrative, not a segmented patient-specific model.
+      material.onBeforeCompile = shader => {
+        Object.assign(shader.uniforms, heartUniforms);
+        const shared = `uniform float heartBeat;
+          uniform vec3 territoryCenter; uniform float territoryRadius;
+          uniform float territoryStrength; uniform float territoryMotion;
+          varying vec3 vAnatomyPosition;`;
+        shader.vertexShader = shared + '\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
+          #include <begin_vertex>
+          vAnatomyPosition = position;
+          float ventricularWeight = 1.0 - smoothstep(-0.12, 0.24, position.y);
+          float affectedWeight = 1.0 - smoothstep(territoryRadius * 0.35, territoryRadius, distance(position, territoryCenter));
+          float localMotion = mix(1.0, territoryMotion, affectedWeight * territoryStrength);
+          float contraction = 0.025 * heartBeat * ventricularWeight * localMotion;
+          transformed.xz *= 1.0 - contraction;
+          transformed.y += 0.012 * heartBeat * ventricularWeight * localMotion;
+        `);
+        shader.fragmentShader = shared + '\n' + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `
+          #include <emissivemap_fragment>
+          float territoryWeight = 1.0 - smoothstep(territoryRadius * 0.35, territoryRadius, distance(vAnatomyPosition, territoryCenter));
+          totalEmissiveRadiance += vec3(0.38, 0.065, 0.012) * territoryWeight * territoryStrength;
+        `);
+      };
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = 'Textured anatomical heart';
+      heartPivot.add(mesh);
+    });
+    heartLoading = false;
+    status.hidden = true;
+    scenePaneEl.dataset.modelState = 'ready';
+  }, progress => {
+    if (progress.total) status.lastElementChild.textContent = `Loading anatomical model… ${Math.round(progress.loaded / progress.total * 100)}%`;
+  }, () => {
+    heartLoading = false;
+    scenePaneEl.dataset.modelState = 'error';
+    status.innerHTML = '<span>Heart model could not load.</span><button type="button">Retry</button>';
+    status.querySelector('button').addEventListener('click', loadHeart);
+  });
+}
+loadHeart();
+
+// Cropped Visible Human Male skin, preserving authored anatomy and proportions.
+// Source meters -> viewer units: multiply by 4; center height at source y=0.44 m.
+const torsoGroup = new THREE.Group();
+scene.add(torsoGroup);
+let bodyLoading = false;
+let bodyReady = false;
+function updateBodyStatus() {
+  document.getElementById('body-status').hidden = anatomyView !== 'electrodes' || bodyReady;
+}
+function loadBody() {
+  if (bodyLoading || bodyReady) return;
+  bodyLoading = true;
+  const status = document.getElementById('body-status');
+  status.innerHTML = '<span class="model-spinner" aria-hidden="true"></span><span>Loading anatomical torso…</span>';
+  new THREE.GLTFLoader().load('assets/torso.glb', gltf => {
+    gltf.scene.traverse(node => {
+      if (!node.isMesh) return;
+      const material = new THREE.MeshPhysicalMaterial({
+        color: 0xa7b6c9, roughness: .72, metalness: 0, envMapIntensity: .22,
+        transparent: true, opacity: .48, depthWrite: false, side: THREE.FrontSide,
+      });
+      // A soft chest window reveals the heart while preserving body landmarks.
+      material.onBeforeCompile = shader => {
+        shader.vertexShader = 'varying vec3 vTorsoPosition;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvTorsoPosition = position;');
+        shader.fragmentShader = 'varying vec3 vTorsoPosition;\n' + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
+          #include <color_fragment>
+          vec2 chestDistance = (vTorsoPosition.xy - vec2(0.075, 0.27)) / vec2(0.40, 0.48);
+          float chestWindow = smoothstep(0.45, 1.2, length(chestDistance));
+          float waistFade = smoothstep(-1.16, -0.99, vTorsoPosition.y);
+          float neckFade = 1.0 - smoothstep(0.92, 1.02, vTorsoPosition.y);
+          float armCutDistance = 0.4 * (vTorsoPosition.y / 4.0 + 0.44) - 0.9 * abs(vTorsoPosition.x / 4.0) + 0.13;
+          float armFade = smoothstep(0.0, 0.018, armCutDistance);
+          diffuseColor.a *= mix(0.08, 1.0, chestWindow) * waistFade * neckFade * armFade;
+        `);
+      };
+      node.material = material;
+      node.renderOrder = 2;
+      torsoGroup.add(node);
+      fitElectrodesToBody(node.geometry);
+    });
+    bodyReady = true; bodyLoading = false;
+    scenePaneEl.dataset.bodyState = 'ready';
+    updateBodyStatus();
+  }, undefined, () => {
+    bodyLoading = false;
+    scenePaneEl.dataset.bodyState = 'error';
+    status.innerHTML = '<span>Torso model could not load.</span><button type="button">Retry torso</button>';
+    status.querySelector('button').addEventListener('click', loadBody);
+    updateBodyStatus();
+  });
+}
+function fitElectrodesToBody(geometry) {
+  const surface = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({side: THREE.DoubleSide}));
+  const raycaster = new THREE.Raycaster();
+  Object.entries(ELEC_DEFS).forEach(([name, def]) => {
+    if (name === 'V5' || name === 'V6') {
+      raycaster.set(new THREE.Vector3(0, def.pos[1], .05), new THREE.Vector3(1, 0, name === 'V5' ? .62 : 0).normalize());
+    } else {
+      raycaster.set(new THREE.Vector3(def.pos[0], def.pos[1], 2), new THREE.Vector3(0, 0, -1));
+    }
+    const hit = raycaster.intersectObject(surface)[0];
+    if (!hit) throw new Error(`Electrode ${name} does not intersect the torso`);
+    const position = hit.point.clone().addScaledVector(hit.face.normal, .014);
+    def.pos = position.toArray();
+    elecMeshes[name].position.copy(position);
+  });
+  surface.material.dispose();
+  // Selection can occur while the local torso asset is still loading.
+  if (popupLead) buildLeadArrows(popupLead);
+}
+
+let anatomyView='heart';
+const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+function resetCamera() {
+  controls.target.set(0,anatomyView==='heart'?.16:-.04,0);
+  const aspect=scenePaneEl.clientWidth/Math.max(scenePaneEl.clientHeight,1);
+  const distance=anatomyView==='heart'?Math.max(3.1,2.1/aspect):Math.max(4.8,3.0/aspect);
+  camera.position.set(anatomyView==='heart'?.22:.15,.24,distance);
+  controls.update();
+}
+function setAnatomyView(view) {
+ anatomyView=view;torsoGroup.visible=view==='electrodes';
+ // Match the HRA reference heart width (0.12435 m) without stretching the approved heart.
+ heartPivot.scale.setScalar(view==='electrodes' ? .557 : 1);
+ heartPivot.position.set(view==='electrodes' ? .075 : 0, view==='electrodes' ? .27 : .07, view==='electrodes' ? .15 : 0);
+ updateBodyStatus();
+ document.getElementById('body-credit').hidden = view !== 'electrodes';
+ document.getElementById('label-container').style.visibility=view==='electrodes'?'visible':'hidden';
+ Object.values(elecMeshes).forEach(m=>{m.visible=view==='electrodes'&&(leadMode==='12'||!m.userData.precordial);});
+ arrowGroup.visible=view==='electrodes';
+ document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
+ document.getElementById('scene-caption').textContent=view==='heart'?'Anatomical heart · textured model':'Heart in chest · reference proportions';
+ resetCamera();
+}
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setAnatomyView(b.dataset.view)));
+document.getElementById('btn-reset-view').addEventListener('click',resetCamera);
+document.getElementById('btn-rotate').addEventListener('click',()=>{
+ controls.autoRotate=!controls.autoRotate;
+ document.getElementById('btn-rotate').setAttribute('aria-pressed',String(controls.autoRotate));
+});
+
+// ─────────────────────────────────────────────
+//  ELECTRODES
+// ─────────────────────────────────────────────
+const elecMeshes = {};
+const elecGeo = new THREE.SphereGeometry(0.025, 16, 12);
+const elecMatLimb = new THREE.MeshStandardMaterial({
+  color:0xffd166, emissive:0xffd166, emissiveIntensity:0.6, roughness:0.3, metalness:0.2
+});
+const elecMatPrec = new THREE.MeshStandardMaterial({
+  color:0x4ad7ff, emissive:0x4ad7ff, emissiveIntensity:0.5, roughness:0.3, metalness:0.2
+});
+Object.entries(ELEC_DEFS).forEach(([name, def]) => {
+  const mat = def.type === 'limb' ? elecMatLimb : elecMatPrec;
+  const mesh = new THREE.Mesh(elecGeo, mat.clone());
+  mesh.position.set(...def.pos);
+  mesh.userData.precordial = def.type === 'precordial';
+  scene.add(mesh);
+  elecMeshes[name] = mesh;
+});
+
+// ─────────────────────────────────────────────
+//  ELECTRODE DOM LABELS
+// ─────────────────────────────────────────────
+const labelContainer = document.getElementById('label-container');
+const labelPins = {};
+const labelLeaders = {};
+const labelSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+labelSvg.setAttribute('class', 'electrode-leaders');
+labelSvg.setAttribute('aria-hidden', 'true');
+labelContainer.appendChild(labelSvg);
+Object.entries(ELEC_DEFS).forEach(([name, def]) => {
+  const pin = document.createElement('button');
+  pin.className = `label-pin ${def.type}`;
+  pin.textContent = def.label;
+  pin.dataset.elec = name;
+  pin.setAttribute('aria-label', `Explore electrode ${name}`);
+  pin.addEventListener('click', () => showLeadPopupForElec(name, pin.getBoundingClientRect()));
+  labelContainer.appendChild(pin);
+  labelPins[name] = pin;
+  if (def.type === 'precordial') {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    labelSvg.appendChild(line); labelLeaders[name] = line;
+  }
+});
+
+function updateLabelPositions() {
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  const chest = new THREE.Vector3(0, .18, .5).project(camera);
+  const columnX = Math.min(w-24, (chest.x*.5+.5)*w + Math.min(w*.32,180));
+  const chestY = (-chest.y*.5+.5)*h;
+  Object.entries(ELEC_DEFS).forEach(([name, def]) => {
+    const pos = new THREE.Vector3(...def.pos).project(camera);
+    const x = (pos.x*.5+.5)*w, y = (-pos.y*.5+.5)*h;
+    const pin = labelPins[name];
+    const visible = pos.z < 1 && pin.dataset.hidden !== '1';
+    let labelX = x, labelY = y-7;
+    if (def.type === 'precordial') {
+      const index = Number(name.slice(1));
+      labelX = index === 1 ? x-44 : columnX;
+      labelY = index === 1 ? y-10 : chestY-48+(index-2)*26;
+      const line = labelLeaders[name];
+      line.setAttribute('x1',x); line.setAttribute('y1',y);
+      line.setAttribute('x2',labelX); line.setAttribute('y2',labelY-9);
+      line.style.display = visible ? '' : 'none';
+    }
+    pin.style.left = labelX+'px'; pin.style.top = labelY+'px';
+    pin.style.display = visible ? 'block' : 'none';
+  });
+}
+
+// ─────────────────────────────────────────────
+//  3D ELECTRODE PICKING — clicking the sphere itself opens the lead popup
+// ─────────────────────────────────────────────
+const _pickRaycaster = new THREE.Raycaster();
+const _pickMouse     = new THREE.Vector2();
+
+function _pickElectrode(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  _pickMouse.x =  ((clientX - rect.left) / rect.width)  * 2 - 1;
+  _pickMouse.y = -((clientY - rect.top)  / rect.height) * 2 + 1;
+  _pickRaycaster.setFromCamera(_pickMouse, camera);
+  const meshes = Object.values(elecMeshes).filter(m => m.visible);
+  const hits = _pickRaycaster.intersectObjects(meshes, false);
+  if (!hits.length) return null;
+  // Find which electrode name corresponds to hit mesh
+  const hitMesh = hits[0].object;
+  return Object.keys(elecMeshes).find(n => elecMeshes[n] === hitMesh) || null;
+}
+
+renderer.domElement.addEventListener('click', e => {
+  const name = _pickElectrode(e.clientX, e.clientY);
+  if (name) showLeadPopupForElec(name, {left:e.clientX, right:e.clientX, top:e.clientY, bottom:e.clientY});
+});
+
+// Floating tooltip for hover targets (wand parts, etc.)
+const sceneTooltipEl = document.createElement('div');
+sceneTooltipEl.id = 'scene-tooltip';
+sceneTooltipEl.style.cssText = `
+  position:fixed; pointer-events:none; z-index:300;
+  background:rgba(10,15,12,0.95); color:#cdd9d3;
+  border:1px solid #2a3a32; border-radius:6px;
+  padding:6px 10px; font-size:11px; line-height:1.4;
+  max-width:280px; box-shadow:0 4px 16px rgba(0,0,0,0.6);
+  display:none;
+`;
+document.body.appendChild(sceneTooltipEl);
+
+function _pickHoverTarget(clientX, clientY) {
+  if (anatomyView !== 'electrodes') return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  _pickMouse.x =  ((clientX - rect.left) / rect.width)  * 2 - 1;
+  _pickMouse.y = -((clientY - rect.top)  / rect.height) * 2 + 1;
+  _pickRaycaster.setFromCamera(_pickMouse, camera);
+  // Electrodes first (so they win over wand if overlapping)
+  const elecs = Object.values(elecMeshes).filter(m => m.visible);
+  const elecHits = _pickRaycaster.intersectObjects(elecs, false);
+  if (elecHits.length) {
+    const hitMesh = elecHits[0].object;
+    const name = Object.keys(elecMeshes).find(n => elecMeshes[n] === hitMesh);
+    return { kind: 'electrode', name, tooltip: name === 'RL'
+      ? 'Right leg electrode · ground / noise reduction · no diagnostic lead axis'
+      : name ? `Click to view Lead ${ELECTRODE_LEADS[name]} formula and axis` : null };
+  }
+  // Wand pieces (axis cylinder, tip cone, neg dot)
+  const wandHits = _pickRaycaster.intersectObjects(arrowGroup.children, false);
+  for (const h of wandHits) {
+    if (h.object.userData?.tooltip) return { kind: 'wand', tooltip: h.object.userData.tooltip };
+  }
+  return null;
+}
+
+renderer.domElement.addEventListener('pointermove', e => {
+  const target = _pickHoverTarget(e.clientX, e.clientY);
+  if (target?.tooltip) {
+    sceneTooltipEl.textContent = target.tooltip;
+    sceneTooltipEl.style.display = 'block';
+    sceneTooltipEl.style.left = (e.clientX + 14) + 'px';
+    sceneTooltipEl.style.top  = (e.clientY + 14) + 'px';
+    renderer.domElement.style.cursor = target.kind === 'electrode' ? 'pointer' : 'help';
+  } else {
+    sceneTooltipEl.style.display = 'none';
+    renderer.domElement.style.cursor = '';
+  }
+});
+renderer.domElement.addEventListener('pointerleave', () => {
+  sceneTooltipEl.style.display = 'none';
+  renderer.domElement.style.cursor = '';
+});
+
+// ─────────────────────────────────────────────
+//  INFARCT VISUALIZATION
+// ─────────────────────────────────────────────
+// Localized illustrative territory tint and motion; hidden before quiz reveal.
+let infarctMarker = null;
+let activeTerritory = null;
+const infarctTag = document.getElementById('infarct-tag');
+
+function buildInfarct(scenario) {
+  heartUniforms.territoryStrength.value = 0;
+  heartUniforms.territoryMotion.value = 1;
+  if (infarctMarker) { heartPivot.remove(infarctMarker); infarctMarker = null; }
+  infarctTag.style.display = 'none';
+  activeTerritory = null;
+
+  // Hide infarct visualization in quiz mode until reveal — would give away the answer
+  if (appMode === 'quiz' && !quizRevealed) return;
+
+  const terr = TERRITORY[scenario];
+  if (!terr) return;
+  activeTerritory = terr;
+
+  heartUniforms.territoryCenter.value.set(...terr.center);
+  heartUniforms.territoryRadius.value = terr.r * 2.1;
+  heartUniforms.territoryStrength.value = 1;
+  heartUniforms.territoryMotion.value = {akinetic: 0, hypokinetic: .4, dyskinetic: -.8}[terr.motion] ?? 1;
+  infarctMarker = new THREE.Object3D();
+  infarctMarker.position.set(...terr.center);
+  heartPivot.add(infarctMarker);
+}
+
+function updateInfarctTag() {
+  if (!infarctMarker) { infarctTag.style.display = 'none'; return; }
+  // Get marker world position (parented to heartPivot now)
+  const worldPos = new THREE.Vector3();
+  infarctMarker.getWorldPosition(worldPos);
+  worldPos.project(camera);
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  const x = (worldPos.x * 0.5 + 0.5) * w;
+  const y = (-worldPos.y * 0.5 + 0.5) * h;
+  infarctTag.style.left = x + 'px';
+  infarctTag.style.top  = (y - 8) + 'px';
+  infarctTag.style.display = worldPos.z < 1 ? 'block' : 'none';
+}
+
+// ─────────────────────────────────────────────
+//  LEAD VECTOR ARROWS
+// ─────────────────────────────────────────────
+const arrowGroup = new THREE.Group();
+scene.add(arrowGroup);
+
+function clearArrows() {
+  while (arrowGroup.children.length) arrowGroup.remove(arrowGroup.children[0]);
+}
+
+function getElecPos(name) {
+  return new THREE.Vector3(...ELEC_DEFS[name].pos);
+}
+
+function buildLeadArrows(leadName) {
+  if (anatomyView !== 'electrodes') setAnatomyView('electrodes');
+  clearArrows();
+  const comp = LEAD_COMPUTATION[leadName];
+  if (!comp) return;
+
+  // Highlight involved electrodes by emissive boost
+  Object.entries(elecMeshes).forEach(([n, m]) => {
+    m.material.emissiveIntensity = 0.15;
+    m.scale.setScalar(1);
+  });
+  const highlight = (n, color) => {
+    const m = elecMeshes[n];
+    if (!m) return;
+    m.material.emissiveIntensity = 1.2;
+    m.material.emissive = new THREE.Color(color);
+    m.scale.setScalar(1.6);
+  };
+
+  // Heart center in WORLD coords (heartPivot.position is its world pos after normalization)
+  const heartCenter = new THREE.Vector3();
+  heartPivot.getWorldPosition(heartCenter);
+
+  if (comp.type === 'bipolar' || comp.type === 'augmented') {
+    // Lead axis derived from ACTUAL electrode positions so the arrow visually aligns
+    // with the connector lines: direction = (positive centroid) − (negative centroid),
+    // projected onto the frontal plane (Z=0) since limb leads are a frontal-plane concept.
+    const posMid = new THREE.Vector3();
+    comp.pos.forEach(n => posMid.add(getElecPos(n)));
+    posMid.divideScalar(comp.pos.length);
+    const negMid = new THREE.Vector3();
+    comp.neg.forEach(n => negMid.add(getElecPos(n)));
+    negMid.divideScalar(comp.neg.length);
+    const dir = posMid.clone().sub(negMid);
+    dir.z = 0;                              // collapse to frontal plane
+    dir.normalize();
+    const axisLen = 0.85;                   // span heart with margin
+    const halfLen = axisLen / 2;
+    const negEnd = heartCenter.clone().sub(dir.clone().multiplyScalar(halfLen));
+    const posEnd = heartCenter.clone().add(dir.clone().multiplyScalar(halfLen));
+
+    // Gradient cylinder through heart: pink (neg pole side) → green (pos pole side)
+    const axisGeo = new THREE.CylinderGeometry(0.007, 0.007, axisLen, 16, 1, true);
+    const vCount = axisGeo.attributes.position.count;
+    const colorArr = new Float32Array(vCount * 3);
+    const posArr = axisGeo.attributes.position.array;
+    const cNeg = new THREE.Color(0xff5c7a);
+    const cPos = new THREE.Color(0x3fb950);
+    for (let i = 0; i < vCount; i++) {
+      const y = posArr[i * 3 + 1];          // -halfLen … +halfLen
+      const t = (y + halfLen) / axisLen;     // 0 at neg, 1 at pos
+      colorArr[i * 3]     = cNeg.r * (1 - t) + cPos.r * t;
+      colorArr[i * 3 + 1] = cNeg.g * (1 - t) + cPos.g * t;
+      colorArr[i * 3 + 2] = cNeg.b * (1 - t) + cPos.b * t;
+    }
+    axisGeo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+    const axisMat = new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.85,
+      depthWrite: false,
+    });
+    const axisCyl = new THREE.Mesh(axisGeo, axisMat);
+    axisCyl.position.copy(heartCenter);
+    axisCyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    axisCyl.userData.tooltip = `Lead ${leadName} axis · gradient = negative pole (pink) → positive pole (green) · arrow shows the directional vector along which this lead measures cardiac depolarization`;
+    arrowGroup.add(axisCyl);
+
+    // Tiny pink dot at negative end (small, just a marker)
+    const negDot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.018, 14, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff5c7a, transparent: true, opacity: 0.9 })
+    );
+    negDot.position.copy(negEnd);
+    negDot.userData.tooltip = `Lead ${leadName} negative pole — depolarization moving AWAY from this side produces a downward deflection on the trace`;
+    arrowGroup.add(negDot);
+
+    // Cone arrowhead at positive end (sharper, less chunky than sphere)
+    const headLen = 0.07, headRad = 0.022;
+    const headGeo = new THREE.ConeGeometry(headRad, headLen, 18, 1, true);
+    const headMat = new THREE.MeshBasicMaterial({
+      color: 0x3fb950, transparent: true, opacity: 0.95,
+    });
+    const head = new THREE.Mesh(headGeo, headMat);
+    // Cone default points +Y; align to dir, place tip at posEnd (so cone center sits halfLen back)
+    head.position.copy(posEnd).sub(dir.clone().multiplyScalar(headLen / 2));
+    head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    head.userData.tooltip = `Lead ${leadName} positive pole — depolarization moving TOWARD this arrow produces an upward (positive) deflection on the trace`;
+    arrowGroup.add(head);
+
+    // Solid color-coded connectors from each contributing electrode → heart center.
+    // Green = positive pole, pink = negative pole. Makes lead derivation visible.
+    const connectorMat = (color) => new THREE.LineBasicMaterial({
+      color, transparent: true, opacity: 0.55,
+    });
+    const drawConnector = (electrodeName, color) => {
+      const ePos = getElecPos(electrodeName);
+      const geo = new THREE.BufferGeometry().setFromPoints([ePos, heartCenter]);
+      arrowGroup.add(new THREE.Line(geo, connectorMat(color)));
+      // small node dot near the electrode end so the connection reads clearly
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 10, 8),
+        new THREE.MeshBasicMaterial({ color })
+      );
+      dot.position.copy(ePos);
+      arrowGroup.add(dot);
+    };
+    comp.pos.forEach(n => { highlight(n, 0x3fb950); drawConnector(n, 0x3fb950); });
+    comp.neg.forEach(n => { highlight(n, 0xff5c7a); drawConnector(n, 0xff5c7a); });
+
+    // For augmented leads, also show a thin pink line between the two negative
+    // electrodes — that midpoint is the implicit reference (Goldberger's network).
+    if (comp.type === 'augmented' && comp.neg.length === 2) {
+      const a = getElecPos(comp.neg[0]);
+      const b = getElecPos(comp.neg[1]);
+      const midGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const midMat = new THREE.LineDashedMaterial({
+        color: 0xff5c7a, dashSize: 0.04, gapSize: 0.025,
+        transparent: true, opacity: 0.4,
+      });
+      const midLine = new THREE.Line(midGeo, midMat);
+      midLine.computeLineDistances();
+      arrowGroup.add(midLine);
+    }
+  } else if (comp.type === 'precordial') {
+    // Single cyan arrow from chest electrode into heart center — shows view direction.
+    // Limb electrodes get a small pink emissive boost as visual reminder they form the
+    // Wilson Central Terminal reference, but no 3D lines (WCT is an abstract average,
+    // not a physical point — drawing it in space confuses the geometry).
+    const posP = getElecPos(comp.elec);
+    highlight(comp.elec, 0x4ad7ff);
+    comp.neg.forEach(n => highlight(n, 0xff5c7a));
+    const heartCenter = heartPivot.getWorldPosition(new THREE.Vector3());
+    const dir = heartCenter.clone().sub(posP).normalize();
+    const len = posP.distanceTo(heartCenter);
+    const arrow = new THREE.ArrowHelper(dir, posP, len, 0x4ad7ff, 0.10, 0.06);
+    arrowGroup.add(arrow);
+  }
+}
+
+// Reset electrode highlights when arrows cleared
+const _origClearArrows = clearArrows;
+clearArrows = function() {
+  _origClearArrows();
+  Object.entries(elecMeshes).forEach(([n, m]) => {
+    const def = ELEC_DEFS[n];
+    m.material.emissiveIntensity = def.type === 'limb' ? 0.6 : 0.5;
+    m.material.emissive = new THREE.Color(def.type === 'limb' ? 0xffd166 : 0x4ad7ff);
+    m.scale.setScalar(1);
+  });
+};
+
+// ─────────────────────────────────────────────
+//  QUIZ DRAG-SELECT
+// ─────────────────────────────────────────────
+// Live drag-rectangle state (during a drag, before the user picks a label).
+let _activeDrag = null;  // { lead, x1, x2, canvas } — rendered as gray preview band
+
+// Floating popup element for picking the abnormality label after a drag
+let _quizPopupEl = null;
+
+function _makeQuizPopup(x, y, lead, x1, x2) {
+  if (_quizPopupEl) _quizPopupEl.remove();
+  const pop = document.createElement('div');
+  pop.className = 'quiz-popup';
+  pop.style.left = Math.min(x, window.innerWidth - 220) + 'px';
+  pop.style.top  = Math.min(y, window.innerHeight - 280) + 'px';
+  pop.innerHTML = `<div class="qpop-title">What did you spot in ${lead}?</div>`;
+  Object.entries(QUIZ_LABELS).forEach(([key, def]) => {
+    const btn = document.createElement('button');
+    btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;background:${def.color};border-radius:50%;margin-right:8px;vertical-align:middle"></span>${def.text}`;
+    btn.onclick = () => {
+      if (!quizSelections[lead]) quizSelections[lead] = [];
+      quizSelections[lead].push({ x1, x2, label: key });
+      _activeDrag = null;
+      pop.remove(); _quizPopupEl = null;
+    };
+    pop.appendChild(btn);
+  });
+  const cancel = document.createElement('button');
+  cancel.className = 'qpop-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.onclick = () => { _activeDrag = null; pop.remove(); _quizPopupEl = null; };
+  pop.appendChild(cancel);
+  document.body.appendChild(pop);
+  _quizPopupEl = pop;
+}
+
+function attachQuizDragSelect(canvas, lead, cell) {
+  let dragging = false;
+  let startX = 0;
+  canvas.addEventListener('pointerdown', e => {
+    if (quizRevealed) return;  // can't add selections after reveal
+    e.stopPropagation();
+    e.preventDefault();
+    dragging = true;
+    canvas.setPointerCapture(e.pointerId);
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.clientX - r.left) * (canvas.width / r.width);
+    startX = cx;
+    _activeDrag = { lead, x1: cx, x2: cx, canvas };
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.clientX - r.left) * (canvas.width / r.width);
+    _activeDrag.x2 = cx;
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (!dragging) return;
+    dragging = false;
+    canvas.releasePointerCapture(e.pointerId);
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.clientX - r.left) * (canvas.width / r.width);
+    const x1 = Math.min(startX, cx);
+    const x2 = Math.max(startX, cx);
+    if (x2 - x1 < 8) {  // tap, not drag — clear selection at this position
+      _activeDrag = null;
+      _clearSelectionAt(lead, cx);
+      return;
+    }
+    _makeQuizPopup(e.clientX, e.clientY, lead, x1, x2);
+  });
+  // Right-click on a selection removes it
+  canvas.addEventListener('contextmenu', e => {
+    if (quizRevealed) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.clientX - r.left) * (canvas.width / r.width);
+    _clearSelectionAt(lead, cx);
+  });
+}
+
+function _clearSelectionAt(lead, cx) {
+  const arr = quizSelections[lead];
+  if (!arr) return;
+  quizSelections[lead] = arr.filter(s => !(cx >= s.x1 && cx <= s.x2));
+}
+
+function _drawQuizSelections(ctx, w, h, lead) {
+  const arr = quizSelections[lead];
+  if (arr) {
+    arr.forEach(s => {
+      const def = QUIZ_LABELS[s.label] || { color: '#888' };
+      ctx.fillStyle = def.color + '55';   // 33% alpha
+      ctx.fillRect(s.x1, 0, s.x2 - s.x1, h);
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(s.x1 + 0.5, 0.5, s.x2 - s.x1 - 1, h - 1);
+      // Label text
+      ctx.fillStyle = def.color;
+      ctx.font = '600 10px ui-monospace, monospace';
+      ctx.fillText(s.label.toUpperCase(), s.x1 + 4, 12);
+    });
+  }
+  // Live drag preview
+  if (_activeDrag && _activeDrag.lead === lead) {
+    const x1 = Math.min(_activeDrag.x1, _activeDrag.x2);
+    const x2 = Math.max(_activeDrag.x1, _activeDrag.x2);
+    ctx.fillStyle = 'rgba(150,200,255,0.25)';
+    ctx.fillRect(x1, 0, x2 - x1, h);
+    ctx.strokeStyle = 'rgba(150,200,255,0.85)';
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x1 + 0.5, 0.5, x2 - x1 - 1, h - 1);
+    ctx.setLineDash([]);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  ECG GRID SETUP
+// ─────────────────────────────────────────────
+const ecgGridEl = document.getElementById('ecg-grid');
+const ecgCanvases = {};
+const ecgCtxs = {};
+let writeHead = 0; // current write position in ring buffer
+
+function buildEcgGrid() {
+  const _wasSelected = popupLead;
+  ecgGridEl.innerHTML = '';
+  // Always 3x4 grid with all 12 leads; dim V1-V6 when in 6-lead mode
+  ecgGridEl.className = 'ecg-grid';
+
+  LEADS_12.forEach(lead => {
+    const cell = document.createElement('div');
+    cell.className = 'ecg-cell';
+    cell.id = `cell-${lead}`;
+    const sc = SCENARIOS[currentScenario];
+    const isAbnormal = sc.abnormal.includes(lead);
+    const isHidden = leadMode === '6' && !LEADS_6.includes(lead);
+
+    if (isAbnormal && appMode === 'study') {
+      cell.classList.add('abnormal');
+    }
+    if (isHidden) cell.classList.add('hidden-6lead');
+
+    const lbl = document.createElement('div');
+    const comp = LEAD_COMPUTATION[lead];
+    lbl.className = 'cell-label ' + (comp.type === 'precordial' ? 'precordial' : 'limb');
+    lbl.textContent = lead;
+    cell.appendChild(lbl);
+
+    const canvas = document.createElement('canvas');
+    cell.appendChild(canvas);
+    ecgGridEl.appendChild(cell);
+    ecgCanvases[lead] = canvas;
+    ecgCtxs[lead] = canvas.getContext('2d');
+    if (typeof attachWaveformHover === 'function') attachWaveformHover(canvas, lead);
+
+    // Badge: ABNORMAL / MISSED — only in study mode (quiz mode hides them)
+    if (appMode === 'study') {
+      if (isHidden && isAbnormal) {
+        const badge = document.createElement('div');
+        badge.className = 'badge missed';
+        badge.textContent = 'MISSED';
+        cell.appendChild(badge);
+      } else if (isAbnormal) {
+        const badge = document.createElement('div');
+        badge.className = 'badge abnormal';
+        badge.textContent = 'ABNORMAL';
+        cell.appendChild(badge);
+      }
+    }
+
+    // Quiz mode: enable drag-select on canvas, suppress single-click popup
+    if (appMode === 'quiz' && !isHidden) {
+      cell.classList.add('quiz-mode');
+      attachQuizDragSelect(canvas, lead, cell);
+    }
+
+    if (!isHidden) {
+      cell.tabIndex = 0;
+      cell.setAttribute('role', 'button');
+      cell.setAttribute('aria-label', `Explore lead ${lead}. Press Enter to enlarge.`);
+      cell.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); openFocus(lead); }
+      });
+      // In quiz mode, single-click opens lead-info popup only via cell-label area
+      // (clicking the canvas starts a drag-select). Suppress cell-wide click.
+      if (appMode !== 'quiz') {
+        cell.addEventListener('click', () => openLeadPopup(lead));
+      }
+      cell.addEventListener('dblclick', e => { e.preventDefault(); openFocus(lead); });
+    }
+  });
+  // Re-apply selected highlight if popup still open after rebuild
+  if (_wasSelected) setSelectedCell(_wasSelected);
+  // Re-apply focus if open and lead still visible after rebuild
+  if (focusedLead) {
+    const stillVisible = !(leadMode === '6' && !LEADS_6.includes(focusedLead));
+    if (!stillVisible) closeFocus();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  ECG FOCUS OVERLAY (double-click to enlarge a lead)
+// ─────────────────────────────────────────────
+const focusOverlay  = document.getElementById('ecg-focus-overlay');
+const focusCanvas   = document.getElementById('ecg-focus-canvas');
+const focusCtx      = focusCanvas.getContext('2d');
+const focusTitle    = document.getElementById('ecg-focus-title');
+const focusFinding  = document.getElementById('ecg-focus-finding');
+let focusedLead = null;
+
+function resizeFocusCanvas() {
+  if (!focusedLead) return;
+  const r = focusCanvas.getBoundingClientRect();
+  focusCanvas.width  = Math.floor(r.width);
+  focusCanvas.height = Math.floor(r.height);
+}
+
+function openFocus(lead) {
+  focusedLead = lead;
+  focusTitle.textContent = `Lead ${lead}`;
+  const sc = SCENARIOS[currentScenario];
+  // In quiz mode, hide the explanation until submitted
+  focusFinding.innerHTML = (appMode === 'quiz' && !quizRevealed)
+    ? '<em style="color:var(--text-dim)">Explanation hidden in quiz mode — submit your answer first to reveal it.</em>'
+    : leadExplanationHTML(lead, sc);
+  focusOverlay.style.display = 'flex';
+  syncFocusControls();
+  // Wait one frame so layout settles, then size canvas
+  requestAnimationFrame(() => { resizeFocusCanvas(); drawEcgStrip(lead, { canvas: focusCanvas, ctx: focusCtx }); });
+}
+function closeFocus() {
+  focusedLead = null;
+  focusOverlay.style.display = 'none';
+}
+document.getElementById('ecg-focus-close').addEventListener('click', closeFocus);
+focusOverlay.addEventListener('click', e => { if (e.target === focusOverlay) closeFocus(); });
+window.addEventListener('resize', () => { if (focusedLead) resizeFocusCanvas(); });
+
+// Focus controls bound to global bpm/speed/paused
+const focusBpmSlider    = document.getElementById('focus-sl-bpm');
+const focusBpmReadout   = document.getElementById('focus-bpm-readout');
+const focusSpeedSlider  = document.getElementById('focus-sl-speed');
+const focusSpeedReadout = document.getElementById('focus-speed-readout');
+const focusPauseBtn     = document.getElementById('focus-btn-pause');
+const headerPauseBtn    = document.getElementById('btn-pause');
+
+function syncPauseUI() {
+  const txt = isPaused ? '▶ Play' : '⏸ Pause';
+  if (focusPauseBtn) focusPauseBtn.textContent = txt;
+  if (headerPauseBtn) headerPauseBtn.textContent = txt;
+}
+function togglePause() { isPaused = !isPaused; syncPauseUI(); }
+
+function syncFocusControls() {
+  focusBpmSlider.value   = bpm;
+  focusBpmReadout.textContent = bpm;
+  focusSpeedSlider.value = speed;
+  focusSpeedReadout.textContent = speed.toFixed(2) + '×';
+  syncPauseUI();
+}
+focusBpmSlider.addEventListener('input', () => {
+  bpm = parseInt(focusBpmSlider.value);
+  focusBpmReadout.textContent = bpm;
+  const hdr = document.getElementById('sl-bpm');
+  if (hdr) { hdr.value = bpm; document.getElementById('bpm-readout').textContent = bpm; }
+});
+focusSpeedSlider.addEventListener('input', () => {
+  speed = parseFloat(focusSpeedSlider.value);
+  focusSpeedReadout.textContent = speed.toFixed(2) + '×';
+  const hdr = document.getElementById('sl-speed');
+  if (hdr) { hdr.value = speed; document.getElementById('speed-readout').textContent = speed.toFixed(1) + '×'; }
+});
+focusPauseBtn.addEventListener('click', togglePause);
+headerPauseBtn.addEventListener('click', togglePause);
+// Spacebar shortcut (skip when typing in inputs)
+window.addEventListener('keydown', e => {
+  if (document.body.dataset.workspace === 'simulator') return;
+  if (e.code === 'Space' && !['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)) {
+    e.preventDefault(); togglePause();
+  }
+});
+
+const ALL_LEADS_ORDER = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'];
+function focusStep(delta) {
+  if (!focusedLead) return;
+  const visible = leadMode === '6' ? LEADS_6 : ALL_LEADS_ORDER;
+  let i = visible.indexOf(focusedLead);
+  if (i < 0) i = 0;
+  i = (i + delta + visible.length) % visible.length;
+  openFocus(visible[i]);
+}
+document.getElementById('ecg-focus-prev').addEventListener('click', () => focusStep(-1));
+document.getElementById('ecg-focus-next').addEventListener('click', () => focusStep(+1));
+window.addEventListener('keydown', e => {
+  if (document.body.dataset.workspace === 'simulator') return;
+  if (e.key === 'Escape' && focusedLead) { closeFocus(); return; }
+  if (!focusedLead) return;
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); focusStep(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); focusStep(+1); }
+});
+
+// ─────────────────────────────────────────────
+//  ECG WAVEFORM REGION HOVER — phase-aware tooltips on canvas
+// ─────────────────────────────────────────────
+// Floating tooltip element for waveform-region hover
+const ecgRegionTooltip = document.createElement('div');
+ecgRegionTooltip.id = 'ecg-region-tooltip';
+ecgRegionTooltip.style.cssText = `
+  position:fixed; pointer-events:none; z-index:400;
+  background:rgba(10,15,12,0.96); color:#cdd9d3;
+  border:1px solid #3a5a4a; border-radius:6px;
+  padding:8px 11px; font-size:11px; line-height:1.45;
+  max-width:320px; box-shadow:0 4px 18px rgba(0,0,0,0.7);
+  display:none;
+`;
+document.body.appendChild(ecgRegionTooltip);
+
+// Map a beat phase (0–1) to a wave region + description
+function ecgRegionAt(phase, lead, sc, stShift) {
+  const within = (a, b) => phase >= a && phase <= b;
+  // Phase landmarks roughly match PH constants
+  if (within(0.04, 0.20)) return {
+    name: 'P wave',
+    desc: 'Atrial depolarization (the SA node firing spreads across both atria, contracting them to push blood into the ventricles). Normally upright in I, II, aVF; inverted in aVR.',
+  };
+  if (within(0.27, 0.36)) return {
+    name: 'QRS complex',
+    desc: 'Ventricular depolarization. Septum first (small Q), then the bulk of left ventricle (tall R), then the late activation of the right ventricle wall (small S). Normally <120 ms wide.',
+  };
+  if (within(0.36, 0.46)) {
+    let extra = '';
+    if (stShift > 0.3) extra = ` HERE: ST is elevated by ${stShift.toFixed(1)} mm — direct sign of acute injury current pointing TOWARD this lead.`;
+    else if (stShift < -0.3) extra = ` HERE: ST is depressed by ${Math.abs(stShift).toFixed(1)} mm — reciprocal change (injury current pointing AWAY from this lead).`;
+    return {
+      name: 'ST segment',
+      desc: 'The flat plateau between depolarization and repolarization. Normally sits AT the iso-electric baseline (0 mV). Any vertical shift here = ischemia/infarction.' + extra,
+    };
+  }
+  if (within(0.46, 0.62)) return {
+    name: 'T wave',
+    desc: 'Ventricular repolarization (cells reset to resting potential). Normally upright and concordant with QRS direction. Inverted T waves can indicate ischemia.',
+  };
+  if (within(0.20, 0.27)) return {
+    name: 'PR segment',
+    desc: 'The pause between atrial depolarization and ventricular depolarization — AV node delays the signal so the ventricles have time to fill. Should be flat at baseline.',
+  };
+  return {
+    name: 'TP segment',
+    desc: 'The diastolic gap between heartbeats. Heart is electrically silent and refilling with blood. Used as the baseline reference for measuring ST shifts.',
+  };
+}
+
+// Convert clientX over a canvas → phase value at that horizontal position
+function canvasXToPhase(canvas, clientX) {
+  const rect = canvas.getBoundingClientRect();
+  const px = clientX - rect.left;
+  const w  = canvas.width;
+  if (w === 0) return null;
+  // Same indexing as drawEcgStrip: bufIdx = (writeHead + floor(px*n/w)) % n
+  const f = (px / rect.width) * w;
+  const bufIdx = (writeHead + Math.floor(f * WINDOW_SAMPLES / w)) % WINDOW_SAMPLES;
+  return phaseBuffer[bufIdx];
+}
+
+function attachWaveformHover(canvas, lead) {
+  canvas.addEventListener('pointermove', e => {
+    const phase = canvasXToPhase(canvas, e.clientX);
+    if (phase === null) return;
+    const sc = SCENARIOS[currentScenario];
+    const stShift = effectiveSt(lead, sc);
+    const region = ecgRegionAt(phase, lead, sc, stShift);
+    ecgRegionTooltip.innerHTML = `
+      <div style="color:#7ab8ff;font-weight:700;font-size:12px;margin-bottom:3px">
+        Lead ${lead} · ${region.name}
+      </div>
+      <div>${region.desc}</div>
+    `;
+    ecgRegionTooltip.style.display = 'block';
+    ecgRegionTooltip.style.left = Math.min(e.clientX + 16, window.innerWidth - 340) + 'px';
+    ecgRegionTooltip.style.top  = Math.min(e.clientY + 16, window.innerHeight - 140) + 'px';
+  });
+  canvas.addEventListener('pointerleave', () => {
+    ecgRegionTooltip.style.display = 'none';
+  });
+}
+
+// Wire focus canvas hover (lead changes when openFocus runs)
+function attachFocusHover() {
+  // Clean up by replacing existing focusCanvas listeners — easier to just re-bind per open
+  // We use a single closure-captured lead via wrapper.
+  if (focusCanvas._hoverWired) return;
+  focusCanvas._hoverWired = true;
+  focusCanvas.addEventListener('pointermove', e => {
+    if (!focusedLead) return;
+    const phase = canvasXToPhase(focusCanvas, e.clientX);
+    if (phase === null) return;
+    const sc = SCENARIOS[currentScenario];
+    const stShift = effectiveSt(focusedLead, sc);
+    const region = ecgRegionAt(phase, focusedLead, sc, stShift);
+    ecgRegionTooltip.innerHTML = `
+      <div style="color:#7ab8ff;font-weight:700;font-size:12px;margin-bottom:3px">
+        Lead ${focusedLead} · ${region.name}
+      </div>
+      <div>${region.desc}</div>
+    `;
+    ecgRegionTooltip.style.display = 'block';
+    ecgRegionTooltip.style.left = Math.min(e.clientX + 16, window.innerWidth - 340) + 'px';
+    ecgRegionTooltip.style.top  = Math.min(e.clientY + 16, window.innerHeight - 140) + 'px';
+  });
+  focusCanvas.addEventListener('pointerleave', () => {
+    ecgRegionTooltip.style.display = 'none';
+  });
+}
+attachFocusHover();
+
+// ─────────────────────────────────────────────
+//  ECG DRAWING
+// ─────────────────────────────────────────────
+function drawEcgPaperGrid(ctx, w, h) {
+  // Real-ECG-paper look: small grid (1mm = 0.04s) light pink, major grid (5mm = 0.2s) bolder red.
+  const cellW = w / (WINDOW_SEC / 0.04);
+  const cellH = h / 10;
+  ctx.strokeStyle = 'rgba(220,120,120,0.40)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  for (let x = 0; x <= w + 0.5; x += cellW) { ctx.moveTo(x|0, 0); ctx.lineTo(x|0, h); }
+  for (let y = 0; y <= h + 0.5; y += cellH) { ctx.moveTo(0, y|0); ctx.lineTo(w, y|0); }
+  ctx.stroke();
+  // Major grid
+  const majW = cellW * 5;
+  const majH = cellH * 5;
+  ctx.strokeStyle = 'rgba(190,60,60,0.75)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x <= w + 0.5; x += majW) { ctx.moveTo(x|0, 0); ctx.lineTo(x|0, h); }
+  for (let y = 0; y <= h + 0.5; y += majH) { ctx.moveTo(0, y|0); ctx.lineTo(w, y|0); }
+  ctx.stroke();
+}
+
+function drawEcgStrip(lead, target) {
+  // target = { canvas, ctx } overrides the default per-lead canvas (used for focus overlay)
+  const canvas = target ? target.canvas : ecgCanvases[lead];
+  if (!canvas) return;
+  const ctx = target ? target.ctx : ecgCtxs[lead];
+  const w = canvas.width;
+  const h = canvas.height;
+  if (w === 0 || h === 0) return;
+
+  ctx.clearRect(0, 0, w, h);
+  // Real ECG paper background — warm cream/pink
+  ctx.fillStyle = '#fff5ec';
+  ctx.fillRect(0, 0, w, h);
+
+  drawEcgPaperGrid(ctx, w, h);
+
+  const buf = ecgBuffers[lead];
+  const sc  = SCENARIOS[currentScenario];
+  const isAbnormal = sc.abnormal.includes(lead);
+  const stShift = effectiveSt(lead, sc);
+  const n = WINDOW_SAMPLES;
+
+  // Per-beat ST-segment highlight band: tint pixels whose phase is inside the
+  // J-point → T-end window of their beat. Red for elevation, blue for depression.
+  // Quiz mode HIDES this — would give away the answer. Revealed only after submit
+  // (quizRevealed flag). Also hidden during quiz answering phase.
+  const showBand = (appMode === 'study') || quizRevealed;
+  const rhythm = sc.rhythm || 'sinus';
+
+  // Rhythm scenarios (afib/vfib) — full-strip tint since the whole trace is the issue
+  if (showBand && rhythm !== 'sinus') {
+    if (rhythm === 'vfib') {
+      ctx.fillStyle = 'rgba(220,40,40,0.18)';
+      ctx.fillRect(0, 0, w, h);
+    } else if (rhythm === 'afib') {
+      // Highlight the gap between QRS complexes (where the missing P wave should be).
+      // Use phaseBuffer (which holds afib beat phase 0..1) and tint the early portion
+      // of each beat (0.0 → 0.10) as "no P wave here".
+      ctx.fillStyle = 'rgba(168,85,247,0.20)';  // purple — no P wave
+      let runStart = -1;
+      for (let px = 0; px < w; px++) {
+        const bufIdx = (writeHead + Math.floor(px * n / w)) % n;
+        const ph = phaseBuffer[bufIdx];
+        const inGap = ph < 0.10;
+        if (inGap && runStart < 0) runStart = px;
+        else if (!inGap && runStart >= 0) {
+          ctx.fillRect(runStart, 0, px - runStart, h);
+          runStart = -1;
+        }
+      }
+      if (runStart >= 0) ctx.fillRect(runStart, 0, w - runStart, h);
+    }
+  }
+
+  if (showBand && isAbnormal && Math.abs(stShift) > 0.3) {
+    const stMin = PH.Jpoint, stMax = PH.Tend;
+    ctx.fillStyle = stShift > 0
+      ? 'rgba(220,40,40,0.22)'
+      : 'rgba(40,80,200,0.22)';
+    let runStart = -1;
+    for (let px = 0; px < w; px++) {
+      const bufIdx = (writeHead + Math.floor(px * n / w)) % n;
+      const ph = phaseBuffer[bufIdx];
+      const inST = ph >= stMin && ph <= stMax;
+      if (inST && runStart < 0) runStart = px;
+      else if (!inST && runStart >= 0) {
+        ctx.fillRect(runStart, 0, px - runStart, h);
+        runStart = -1;
+      }
+    }
+    if (runStart >= 0) ctx.fillRect(runStart, 0, w - runStart, h);
+  }
+
+  const midY = h * 0.5;
+  const scale = h * 0.28;
+
+  // Iso-electric reference line (subtle on paper bg)
+  ctx.strokeStyle = 'rgba(60,40,40,0.18)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(0, midY);
+  ctx.lineTo(w, midY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Helper: sample the ring buffer at fractional pixel position with linear
+  // interpolation. Without this, when canvas width > buffer samples (focus view),
+  // adjacent pixels map to the same sample → staircase "TV interference" look.
+  const sampleBuf = (b, px) => {
+    const f  = px * n / w;
+    const lo = Math.floor(f);
+    const hi = lo + 1;
+    const fr = f - lo;
+    const a  = b[(writeHead + (lo % n)) % n];
+    const c  = b[(writeHead + (hi % n)) % n];
+    return a * (1 - fr) + c * fr;
+  };
+
+  // Healthy ghost overlay: translucent line showing what this lead looks like normal.
+  // Hidden in quiz mode (also reveals answer). Shown after quiz submit.
+  if (showBand && isAbnormal && Math.abs(stShift) > 0.3) {
+    const hbuf = healthyBuffers[lead];
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(40,90,180,0.85)';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
+    for (let px = 0; px < w; px++) {
+      const y = midY - sampleBuf(hbuf, px) * scale;
+      if (px === 0) ctx.moveTo(px, y);
+      else ctx.lineTo(px, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw actual waveform on top — black ink, like real ECG paper
+  ctx.beginPath();
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+  for (let px = 0; px < w; px++) {
+    const y = midY - sampleBuf(buf, px) * scale;
+    if (px === 0) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // Quiz drag-select overlays (only in quiz mode, including live drag preview)
+  if (appMode === 'quiz') _drawQuizSelections(ctx, w, h, lead);
+}
+
+// Territory → primary lead group (where direct injury current shows up)
+const TERRITORY_LEADS = {
+  inferior:  ['II','III','aVF'],
+  anterior:  ['V1','V2','V3','V4','V5'],
+  septal:    ['V1','V2','V3'],
+  lateral:   ['I','aVL','V5','V6'],
+  posterior: ['V7','V8','V9'],   // not displayed; V1-V3 carry reciprocal pattern
+  rv:        ['V1','II','III','aVF'],
+};
+const TERRITORY_LABEL = {
+  inferior: 'inferior wall',
+  anterior: 'anterior wall',
+  septal:   'septal',
+  lateral:  'lateral wall',
+  posterior:'posterior wall',
+  rv:       'right ventricle',
+};
+
+// Per-scenario diagnostic clues — used in quiz feedback panel after submit
+const SCENARIO_CLUES = {
+  normal: [
+    'Every lead has clear P → QRS → T sequence',
+    'No ST shifts above or below the baseline',
+    'Regular R-R intervals (heart rate steady)',
+  ],
+  inferior: [
+    'ST ELEVATION in II, III, aVF (the three "inferior" leads)',
+    'Reciprocal ST DEPRESSION in I and aVL',
+    'No ST elevation in precordial leads (V1–V6)',
+    'Cause: right coronary artery (RCA) blocked',
+  ],
+  anterior: [
+    'ST ELEVATION across V1–V4 (sometimes V5)',
+    'Reciprocal ST DEPRESSION in inferior leads (II, III, aVF)',
+    'Largest ST shifts at V2–V3',
+    'Cause: left anterior descending (LAD) blocked',
+  ],
+  septal: [
+    'ST ELEVATION ONLY in V1–V2 (sometimes a tiny bit in V3)',
+    'V4, V5, V6 look NORMAL',
+    'Inferior leads usually normal',
+    'Cause: septal branch of LAD blocked',
+  ],
+  lateral: [
+    'ST ELEVATION in I, aVL, V5, V6',
+    'Reciprocal DEPRESSION in inferior leads (II, III, aVF)',
+    'V1–V3 normal',
+    'Cause: left circumflex (LCx) blocked',
+  ],
+  posterior: [
+    'ST DEPRESSION (NOT elevation!) in V1–V3 — this is the giveaway',
+    'TALL R waves in V1–V3 (R bigger than S — abnormal there)',
+    'No ST elevation anywhere on a standard 12-lead',
+    'Direct evidence requires V7–V9 (posterior leads, not on standard ECG)',
+    'Cause: LCx or right posterior descending artery blocked',
+  ],
+  rv: [
+    'Inferior ST elevation (II, III, aVF) PLUS extra elevation in V1',
+    'V1 elevation > V2 elevation (key tell)',
+    'Often hypotensive (right ventricle failure)',
+    'Cause: proximal RCA blocked, before RV branches',
+  ],
+  afib: [
+    'NO P waves anywhere',
+    'Irregularly-irregular R-R intervals (no pattern)',
+    'Wavy baseline (fibrillation waves) replaces flat line',
+    'QRS shapes still normal',
+  ],
+  vfib: [
+    'NO recognizable P, QRS, or T waves',
+    'Chaotic squiggle on every lead — heart is quivering',
+    'Cardiac arrest — patient has no pulse',
+    'Treatment: defibrillation NOW',
+  ],
+};
+
+// Common diagnostic confusions — extra teaching tip when user picks A and answer is B
+const DIFFERENTIAL_TIPS = {
+  'septal_vs_posterior':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Septal MI shows ST <strong>elevation</strong> in V1–V2. Posterior MI shows ST <strong>depression</strong> in V1–V3 (the mirror image, since direct posterior leads aren\'t on a standard 12-lead). Direction of the ST shift is the key.</div>',
+  'posterior_vs_septal':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Both involve V1–V3 changes — but septal MI <strong>elevates</strong> the ST line, posterior MI <strong>depresses</strong> it. Look at the direction of the ST shift.</div>',
+  'inferior_vs_rv':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Both elevate II/III/aVF. But RV MI ALSO elevates V1 (without elevating V2 much). If V1 is up alongside the inferior leads → RV involvement.</div>',
+  'rv_vs_inferior':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Pure inferior MI does NOT elevate V1. If you see V1 elevation alongside inferior elevation, the right ventricle is involved (proximal RCA block).</div>',
+  'anterior_vs_septal':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Septal = V1–V2 ONLY. Anterior = V1–V4 or wider. If V3 and V4 are elevated, it\'s anterior, not septal.</div>',
+  'septal_vs_anterior':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Anterior MI extends past V2 (V3 and V4 also elevated). Septal MI stays confined to V1–V2.</div>',
+  'lateral_vs_anterior':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Lateral elevates I + aVL + V5–V6. Anterior elevates V1–V4. Watch which precordials are involved and whether the high-lateral leads (I, aVL) are up.</div>',
+  'afib_vs_vfib':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> Afib still has clear QRS spikes (just irregular). Vfib has NO recognizable QRS at all — pure chaos.</div>',
+  'vfib_vs_afib':
+    '<div style="margin-top:8px;padding:6px 8px;background:rgba(255,209,102,0.10);border-radius:3px;font-size:11px"><strong style="color:#ffd166">Tip:</strong> If you can still pick out individual heartbeats (QRS spikes), it\'s afib, not vfib. Vfib has no organized beats.</div>',
+};
+
+function effectiveSt(lead, sc) {
+  const base = sc.st[lead] || 0;
+  const mul = (activeVariation && activeVariation.stMul && activeVariation.stMul[lead] != null)
+    ? activeVariation.stMul[lead] : 1.0;
+  return base * mul;
+}
+
+function leadFindingText(lead, stShift, sc) {
+  const mag = Math.abs(stShift).toFixed(1);
+  const dir = stShift > 0 ? '↑' : '↓';
+  const isPrimary = (TERRITORY_LEADS[sc.territory] || []).includes(lead);
+  const tag = isPrimary
+    ? `${TERRITORY_LABEL[sc.territory] || ''} injury`.trim()
+    : 'reciprocal';
+  return `ST${dir} ${mag}mm · ${tag}`;
+}
+
+// Build structured explanation pieces — used both for 2D title (plain text)
+// and for the focus overlay (formatted HTML).
+function leadExplanation(lead, sc) {
+  const stShift = sc.st[lead] || 0;
+  const mag = Math.abs(stShift).toFixed(1);
+  const isPrimary = (TERRITORY_LEADS[sc.territory] || []).includes(lead);
+  const region = TERRITORY_LABEL[sc.territory] || 'affected area';
+  const isAbnormal = Math.abs(stShift) > 0.3;
+  const rhythm = sc.rhythm || 'sinus';
+
+  // Rhythm scenarios — every lead is "abnormal" the same way (rhythm = global finding)
+  if (rhythm === 'vfib') {
+    return {
+      title: `Lead ${lead} — Ventricular Fibrillation`,
+      finding: 'No recognizable heartbeat structure. The trace is a chaotic, wandering squiggle with no P waves, no QRS spikes, no T waves. This is CARDIAC ARREST — the heart muscle is quivering, not pumping.',
+      whatYouSee: [
+        'BLACK line — chaotic, irregular oscillation with NO repeating pattern.',
+        'NO sharp tall spikes (which would be normal QRS complexes from organized ventricular contraction).',
+        'NO flat baselines between beats — the line never settles.',
+        'RED tinted background — marks this entire trace as abnormal.',
+      ],
+      whatItMeans: [
+        'In a normal heart, an electrical signal sweeps top-to-bottom every second to make the lower chambers (ventricles) contract together.',
+        'In vfib, that organized signal collapses. Millions of muscle fibers fire randomly, all out of sync. Result: the heart shakes like jelly instead of squeezing.',
+        'No squeeze = no blood pumped = no pulse. The patient is clinically dead in seconds and dies in minutes without defibrillation (electric shock to reset the rhythm).',
+        'CRITICAL: vfib is unmistakable on a single lead. AEDs (automated defibrillators in airports/gyms) detect vfib using just one or two pads.',
+      ],
+      mechanism: [
+        'Cause: usually a heart attack (the dying tissue makes the surrounding muscle electrically unstable), severe electrolyte imbalance, or electrocution.',
+        'Treatment: immediate CPR + defibrillation. Every minute of delay reduces survival ~10%.',
+      ],
+    };
+  }
+  if (rhythm === 'afib') {
+    return {
+      title: `Lead ${lead} — Atrial Fibrillation`,
+      finding: 'No P waves before the QRS spikes (where the small bump for atrial contraction should be). Beats arrive at unpredictable intervals — sometimes close together, sometimes far apart ("irregularly irregular").',
+      whatYouSee: [
+        'BLACK line — sharp QRS spikes are present (lower chambers still beating), but spaced unevenly.',
+        'NO discrete P waves (organized atrial depolarization) before the QRS complexes.',
+        'PURPLE tinted bands — mark where the missing P wave should have been (just before each QRS).',
+        'Wavy fluctuations in the baseline replace what should be a flat line — these are the fibrillation waves from chaotic atrial activity.',
+      ],
+      whatItMeans: [
+        'In a normal heart, the upper chambers (atria) contract first to push blood into the lower chambers (ventricles). That contraction makes the small P wave on the ECG.',
+        'In afib, the atria don\'t contract — they quiver chaotically. So no P wave appears.',
+        'The lower chambers still beat (you still see QRS spikes), but they fire whenever a chaotic atrial signal happens to slip through. That\'s why R-R intervals are irregular.',
+        'Patient often feels fine but is at HIGH stroke risk: stagnant blood in the quivering atria forms clots that can fly to the brain.',
+      ],
+      mechanism: [
+        'Causes: aging, hypertension, valve disease, hyperthyroidism, alcohol, sleep apnea — anything that stretches or scars the atria.',
+        'Treatment: rate control (slow the ventricles down), rhythm control (cardiovert back to normal), and ALWAYS anticoagulation (blood thinner) to prevent stroke.',
+      ],
+    };
+  }
+
+  if (!isAbnormal) {
+    return {
+      title: `Lead ${lead} — looks normal`,
+      finding: 'This lead looks normal in this scenario.',
+      whatYouSee: [
+        'BLACK line — the live ECG signal from this lead.',
+        'PINK GRID — standard ECG paper. Each tiny square = 0.04 seconds wide.',
+        'FAINT DASHED LINE in the middle — the "zero" line. A healthy ECG returns to this line between heartbeat parts.',
+      ],
+      whatItMeans: [
+        'P waves show atrial depolarization, the QRS shows ventricular depolarization, and T waves show ventricular repolarization. These are electrical events; muscle contraction follows activation.',
+        activeVariation
+          ? 'Wave heights and contours vary between simulated subjects. Mild baseline drift and recording noise are added here; the selected scenario has no ST shift in this lead.'
+          : 'Between these bumps the signal returns toward its baseline. This example uses an idealized trace; real recordings need not look identical.',
+      ],
+      mechanism: [],
+    };
+  }
+
+  const dirShort = stShift > 0 ? 'lifted UP' : 'pushed DOWN';
+  const arrow = stShift > 0 ? '↑' : '↓';
+  const tag = isPrimary ? 'DIRECT view of injury' : 'MIRROR of injury';
+
+  return {
+    title: `Lead ${lead} — line ${arrow} by ${mag} mm  (${tag})`,
+    finding: isPrimary
+      ? `The flat segment between heartbeat spikes is ${dirShort} by ${mag} mm. This lead points right at the ${region}, so it sees the damage directly.`
+      : `The flat segment between heartbeat spikes is ${dirShort} by ${mag} mm. This lead is on the opposite side from where the damage is — what you see here is the damage's mirror image.`,
+    whatYouSee: [
+      'BLACK line — the live recording.',
+      'GRAY line behind it — what this same lead would look like if the heart were healthy. The gap between black and gray is the abnormality.',
+      `${stShift > 0 ? 'RED' : 'BLUE'} SHADED STRIPES — these mark the part of each heartbeat where the abnormality lives (the flat plateau just after the tall spike).`,
+    ],
+    whatItMeans: isPrimary
+      ? [
+          `Heart muscle in the ${region} is starved of blood — a heart attack in progress.`,
+          `Damaged muscle creates a small electrical "leak" between heartbeats. This lead is pointed straight at the damage, so it picks up the leak as a ${mag} mm upward shift.`,
+          `Quick rule: if the flat segment after the tall spike is clearly ABOVE the baseline in a lead overlooking a heart wall, that wall is likely under attack.`,
+        ]
+      : [
+          `This lead doesn't see the damaged area directly — it's looking at the opposite side of the heart.`,
+          `The same electrical leak that lifts other leads UP pushes this one DOWN, because of geometry: this lead's "view direction" is reversed.`,
+          `On its own, this downward shift isn't a diagnosis — it's a clue that an injury is happening somewhere else. Look for other leads showing the matching upward shift to find it.`,
+        ],
+    mechanism: [
+      'Background: every heartbeat starts when heart cells fire (a wave of electricity sweeps through them) and ends when they reset. The flat plateau in between should sit on the zero line because all the cells are at the same electrical state.',
+      'When part of the heart is starved of blood, those cells can\'t reset properly. They sit at a different voltage from healthy cells — like a tiny battery between them.',
+      'Leads pointed AT the damaged area record this as an UPWARD shift. Leads pointed AWAY record it as a DOWNWARD shift. Same heart attack, opposite shifts depending on where the lead is looking from.',
+    ],
+  };
+}
+
+// Plain-text version (backup — browser tooltip removed, but kept for any future use)
+function leadHoverTooltip(lead, sc) {
+  const ex = leadExplanation(lead, sc);
+  const join = (b) => Array.isArray(b) ? b.join(' ') : (b || '');
+  if (!ex.mechanism.length && ex.finding.startsWith('This lead looks normal')) return '';
+  return [
+    ex.title,
+    'FINDING: ' + ex.finding,
+    'WHAT YOU SEE: ' + join(ex.whatYouSee),
+    'WHAT IT MEANS: ' + join(ex.whatItMeans),
+    ex.mechanism.length ? 'WHY: ' + join(ex.mechanism) : '',
+  ].filter(Boolean).join('\n\n');
+}
+
+// Rich HTML version for the focus overlay
+function leadExplanationHTML(lead, sc) {
+  const ex = leadExplanation(lead, sc);
+  const renderBody = (b) => Array.isArray(b)
+    ? '<ul style="margin:4px 0 0 0;padding-left:18px">' + b.map(item => `<li style="margin-bottom:4px">${item}</li>`).join('') + '</ul>'
+    : b;
+  const section = (label, body) => {
+    if (!body || (Array.isArray(body) && !body.length)) return '';
+    return `<div style="margin-top:14px">
+      <span style="color:#7ab8ff;font-weight:700;letter-spacing:0.05em;font-size:11px;text-transform:uppercase">${label}</span>
+      <div style="margin-top:4px">${renderBody(body)}</div>
+    </div>`;
+  };
+  return `
+    <div style="font-weight:700;color:#cdd9d3;font-size:16px;margin-bottom:6px">${ex.title}</div>
+    ${section('Finding',         ex.finding)}
+    ${section('What you see',    ex.whatYouSee)}
+    ${section('What it means',   ex.whatItMeans)}
+    ${section('Why this happens',ex.mechanism)}
+  `;
+}
+
+function resizeEcgCanvases() {
+  const leads = leadMode === '12' ? LEADS_12 : LEADS_6;
+  leads.forEach(lead => {
+    const canvas = ecgCanvases[lead];
+    if (!canvas) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width  = Math.floor(rect.width);
+    canvas.height = Math.floor(rect.height);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  HEART PULSE ANIMATION
+// ─────────────────────────────────────────────
+function ventricleScale(phase) {
+  // phase 0–1 within beat
+  // Systolic contraction ~0.28–0.45, diastolic fill rest
+  const systole = Math.max(0, Math.sin(Math.PI * Math.min(1, phase / 0.35)));
+  const contract = 1.0 - 0.06 * systole;
+  return contract;
+}
+
+// ─────────────────────────────────────────────
+//  BEAT GENERATION & FILLING BUFFERS
+// ─────────────────────────────────────────────
+const BEAT_SAMPLES = 512; // samples per beat template
+const beatTemplates = {};
+const healthyBeatTemplates = {};   // baseline 'normal' shape per lead, for ghost overlay
+let beatPhase = 0;     // 0–1 fraction within current beat
+let beatSampleIdx = 0; // index within current beat template
+
+function rebuildBeatTemplates() {
+  LEADS_12.forEach(lead => {
+    beatTemplates[lead] = generateBeat(lead, currentScenario, BEAT_SAMPLES);
+  });
+}
+function buildHealthyTemplates() {
+  LEADS_12.forEach(lead => {
+    healthyBeatTemplates[lead] = generateBeat(lead, 'normal', BEAT_SAMPLES);
+  });
+}
+rebuildBeatTemplates();
+buildHealthyTemplates();
+
+let _sampleDebt = 0;
+let recordingTime = 0;
+
+function recordingVariation(lead, t) {
+  const v = activeVariation?.morphology;
+  if (!v) return {gain:1, offset:0};
+  const leadPhase = LEADS_12.indexOf(lead) * .37;
+  const breathing = 2*Math.PI*.23*t + v.phase;
+  return {
+    gain: 1 + .018*Math.sin(breathing),
+    offset: v.baseline*Math.sin(breathing + leadPhase*.2)
+      + v.noise*(Math.sin(2*Math.PI*17.3*t + leadPhase)
+      + .5*Math.sin(2*Math.PI*31.7*t + v.phase + leadPhase)),
+  };
+}
+
+// Arrhythmia state — used by 'afib' and 'vfib' rhythm scenarios.
+// Continuous time clock (sec) advanced one sample at a time.
+let arrhythmiaTime = 0;
+let afibBeatPhase  = 0;          // sec since last QRS
+let afibBeatDur    = 0.7;        // sec until next QRS (re-randomized each beat)
+let afibPrevPhaseFrac = 0;
+
+function arrhythmiaSample(lead, rhythm) {
+  // Vfib: chaotic sine sum + noise. No structure.
+  if (rhythm === 'vfib') {
+    const t = arrhythmiaTime;
+    const leadOffset = lead.charCodeAt(0) * 0.13;
+    return (
+      (activeVariation?.morphology?.voltage ?? 1) * 0.55 * Math.sin(2 * Math.PI * 5.0  * t + leadOffset) +
+      0.40 * Math.sin(2 * Math.PI * 7.3  * t + leadOffset * 1.7) +
+      0.30 * Math.sin(2 * Math.PI * 11.1 * t + leadOffset * 2.3) +
+      0.18 * Math.sin(2 * Math.PI * 14.7 * t + leadOffset * 0.9) +
+      0.20 * (Math.random() - 0.5)
+    );
+  }
+  // Afib: irregularly irregular QRS + T, no P wave. Baseline = fibrillation waves.
+  const m = variedMorphology(lead);
+  const ph = afibBeatPhase / afibBeatDur;        // 0..1 within current R-R
+  let v = 0;
+  // QRS centered at ~0.18 of the R-R interval
+  v += gauss(ph, 0.17, 0.012, m.Q);
+  v += gauss(ph, 0.19, 0.018, m.R);
+  v += gauss(ph, 0.21, 0.015, m.S);
+  // T wave at ~0.45
+  v += gauss(ph, 0.45, 0.06, m.T * 0.9);
+  // Fibrillation baseline waves (replace P): low-amp irregular oscillation
+  v += 0.06 * Math.sin(2 * Math.PI * 6.5 * arrhythmiaTime + lead.charCodeAt(0) * 0.5);
+  v += 0.04 * Math.sin(2 * Math.PI * 9.2 * arrhythmiaTime + 1.7);
+  v += 0.025 * (Math.random() - 0.5);
+  return v;
+}
+
+function advanceEcg(dt) {
+  if (isPaused) return;
+  const sc = SCENARIOS[currentScenario];
+  const rhythm = sc.rhythm || 'sinus';
+  const samplesPerBeat = SAMPLE_RATE * (60 / bpm);
+  _sampleDebt += dt * SAMPLE_RATE;
+  const samplesThisFrame = Math.floor(_sampleDebt);
+  _sampleDebt -= samplesThisFrame;
+
+  for (let s = 0; s < samplesThisFrame; s++) {
+    const wIdx = writeHead % WINDOW_SAMPLES;
+    recordingTime += 1 / SAMPLE_RATE;
+
+    if (rhythm === 'sinus') {
+      const tIdx = Math.floor((beatSampleIdx / samplesPerBeat) * BEAT_SAMPLES) % BEAT_SAMPLES;
+      const ph = beatSampleIdx / samplesPerBeat;
+      phaseBuffer[wIdx] = ph;
+      LEADS_12.forEach(lead => {
+        const recording = recordingVariation(lead, recordingTime);
+        ecgBuffers[lead][wIdx] = beatTemplates[lead][tIdx]*recording.gain + recording.offset;
+        healthyBuffers[lead][wIdx] = healthyBeatTemplates[lead][tIdx]*recording.gain + recording.offset;
+      });
+      beatSampleIdx++;
+      if (beatSampleIdx >= samplesPerBeat) beatSampleIdx = 0;
+      beatPhase = beatSampleIdx / samplesPerBeat;
+    } else {
+      // Arrhythmia path
+      const dtSample = 1 / SAMPLE_RATE;
+      arrhythmiaTime += dtSample;
+      if (rhythm === 'afib') {
+        afibBeatPhase += dtSample;
+        if (afibBeatPhase >= afibBeatDur) {
+          afibBeatPhase = 0;
+          // Random R-R interval — irregularly irregular (60-180 bpm range)
+          afibBeatDur = 0.33 + Math.random() * 0.67;
+        }
+      }
+      phaseBuffer[wIdx] = rhythm === 'afib' ? (afibBeatPhase / afibBeatDur) : 0;
+      LEADS_12.forEach(lead => {
+        ecgBuffers[lead][wIdx]     = arrhythmiaSample(lead, rhythm);
+        healthyBuffers[lead][wIdx] = 0;  // no "healthy version" reference for arrhythmias
+      });
+      beatPhase = phaseBuffer[wIdx];
+    }
+    writeHead = (writeHead + 1) % WINDOW_SAMPLES;
+  }
+}
+
+// Replace the whole example immediately, including when paused. Never splice
+// two different subjects into one strip; keep phase and reference buffers aligned.
+function refillEcgBuffers() {
+  const paused = isPaused;
+  writeHead = 0; beatSampleIdx = 0; _sampleDebt = 0;
+  recordingTime = 0; arrhythmiaTime = 0; afibBeatPhase = 0;
+  isPaused = false;
+  try { advanceEcg(WINDOW_SEC); } finally { isPaused = paused; }
+}
+
+// ─────────────────────────────────────────────
+//  RENDERER RESIZE
+// ─────────────────────────────────────────────
+function resizeRenderer() {
+  const w = scenePaneEl.clientWidth;
+  const h = scenePaneEl.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  const previousAspect = camera.aspect;
+  camera.aspect = w / h;
+  if (Math.abs(previousAspect - camera.aspect) > .1) resetCamera();
+  camera.updateProjectionMatrix();
+}
+
+const resizeObs = new ResizeObserver(() => {
+  resizeRenderer();
+  resizeEcgCanvases();
+});
+resizeObs.observe(scenePaneEl);
+resizeObs.observe(document.getElementById('ecg-pane'));
+resizeRenderer();
+
+// ─────────────────────────────────────────────
+//  SCENARIO CHANGE
+// ─────────────────────────────────────────────
+function applyScenario(name) {
+  currentScenario = name;
+  activeVariation = null; // reset variation when scenario changes
+  rebuildBeatTemplates();
+  buildHealthyTemplates();
+  refillEcgBuffers();
+  buildEcgGrid();
+  setTimeout(resizeEcgCanvases, 50);
+  buildInfarct(name);
+  updateInfoPane();
+}
+
+function generateVariation() {
+  const sc = SCENARIOS[currentScenario];
+  const stMul = {};
+  LEADS_12.forEach(l => {
+    // Only jitter leads that have a non-zero ST shift in the scenario
+    if (Math.abs(sc.st[l] || 0) > 0.1) {
+      stMul[l] = 0.7 + Math.random() * 0.6; // 0.7× to 1.3×
+    } else {
+      stMul[l] = 1.0;
+    }
+  });
+  activeVariation = { stMul, morphology: createMorphologyVariation() };
+  rebuildBeatTemplates();
+  buildHealthyTemplates();
+  refillEcgBuffers();
+  // Rebuild grid so badges/tooltips reflect new effective ST values
+  buildEcgGrid();
+  setTimeout(resizeEcgCanvases, 50);
+  if (appMode === 'study') updateInfoPane();
+}
+
+// ─────────────────────────────────────────────
+//  QUIZ MODE
+// ─────────────────────────────────────────────
+const QUIZ_STORAGE_KEY = 'ecg-quiz-stats-v1';
+
+function loadQuizStats() {
+  try { return JSON.parse(localStorage.getItem(QUIZ_STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function saveQuizStats(scenario, perLead, diagRight) {
+  const stats = loadQuizStats();
+  if (!stats[scenario]) stats[scenario] = { leads: {}, diag: { right: 0, wrong: 0 } };
+  // Migrate older shape if needed
+  if (!stats[scenario].leads) {
+    const old = stats[scenario];
+    stats[scenario] = { leads: old, diag: { right: 0, wrong: 0 } };
+  }
+  Object.entries(perLead).forEach(([lead, r]) => {
+    if (!stats[scenario].leads[lead]) stats[scenario].leads[lead] = { right: 0, wrong: 0 };
+    if (r.right) stats[scenario].leads[lead].right++;
+    else stats[scenario].leads[lead].wrong++;
+  });
+  if (diagRight === true)  stats[scenario].diag.right++;
+  if (diagRight === false) stats[scenario].diag.wrong++;
+  localStorage.setItem(QUIZ_STORAGE_KEY, JSON.stringify(stats));
+}
+
+function startQuizRound() {
+  // Reset reveal flag + per-cell highlights + drag-selections from any previous round
+  quizRevealed = false;
+  quizSelections = {};
+  if (_quizPopupEl) { _quizPopupEl.remove(); _quizPopupEl = null; }
+  _activeDrag = null;
+  document.querySelectorAll('.quiz-result-correct, .quiz-result-wrong').forEach(el => {
+    el.classList.remove('quiz-result-correct', 'quiz-result-wrong');
+  });
+  // Pick a different random scenario than the previous round (no immediate repeats)
+  const names = Object.keys(SCENARIOS);
+  const prev = currentScenario;
+  let pick = names[Math.floor(Math.random() * names.length)];
+  let attempts = 0;
+  while (pick === prev && attempts < 8 && names.length > 1) {
+    pick = names[Math.floor(Math.random() * names.length)];
+    attempts++;
+  }
+  currentScenario = pick;
+  activeVariation = null;
+  // Generate a fresh morphology/ST variation for this round.
+  generateVariation();
+  rebuildBeatTemplates();
+  buildEcgGrid();
+  setTimeout(resizeEcgCanvases, 50);
+  buildInfarct(currentScenario);  // gated to no-op in quiz pre-reveal
+  // Update info pane to quiz mode
+  document.getElementById('info-title').textContent = 'Quiz — identify the abnormality';
+  document.getElementById('info-body').innerHTML =
+    '<p>1. <strong>Pause</strong> (header button or Space) if you want a still frame.</p>' +
+    '<p>2. <strong>Drag horizontally</strong> across any lead to highlight a region you think is abnormal. A popup asks what you spotted (ST elevation, depression, missing P wave, irregular rhythm, chaotic, etc.).</p>' +
+    '<p>3. Right-click or click on a selection to remove it.</p>' +
+    '<p>4. Pick the overall <strong>Diagnosis</strong> from the dropdown below the strips.</p>' +
+    '<p>5. Click <strong>Submit Answer</strong>. Each lead is scored: marked correctly, or left blank if normal.</p>';
+  document.getElementById('miss-summary').innerHTML = '';
+  // Show quiz bar, hide score/next, re-enable controls
+  const quizBar = document.getElementById('quiz-bar');
+  quizBar.classList.add('visible');
+  document.getElementById('btn-submit-quiz').style.display = '';
+  document.getElementById('btn-next-quiz').style.display = 'none';
+  document.getElementById('quiz-score-display').textContent = '';
+  const diagSel = document.getElementById('quiz-diagnosis');
+  if (diagSel) { diagSel.value = ''; diagSel.disabled = false; }
+  // Hide scenario select value (disable it so user can't peek)
+  document.getElementById('sel-scenario').disabled = true;
+}
+
+function resetQuizState() {
+  quizRevealed = false;
+  document.getElementById('quiz-bar').classList.remove('visible');
+  document.getElementById('sel-scenario').disabled = false;
+  const diagSel = document.getElementById('quiz-diagnosis');
+  if (diagSel) { diagSel.value = ''; diagSel.disabled = false; }
+  // Remove result colouring from cells
+  document.querySelectorAll('.quiz-result-correct, .quiz-result-wrong').forEach(el => {
+    el.classList.remove('quiz-result-correct', 'quiz-result-wrong');
+  });
+}
+
+function submitQuiz() {
+  const sc = SCENARIOS[currentScenario];
+  const rhythm = sc.rhythm || 'sinus';
+  // Build expected per-lead label for sinus-MI scenarios: 'injury' / 'reciprocal' / 'normal'
+  // For rhythm scenarios: every lead should be marked 'no_p' or 'irregular' (afib) or 'chaotic' (vfib)
+  const expected = {};
+  LEADS_12.forEach(l => {
+    if (rhythm === 'afib') {
+      expected[l] = ['no_p', 'irregular'];
+    } else if (rhythm === 'vfib') {
+      expected[l] = ['chaotic'];
+    } else {
+      const st = effectiveSt(l, sc);
+      if (Math.abs(st) < 0.3) expected[l] = ['normal'];
+      else if ((TERRITORY_LEADS[sc.territory] || []).includes(l)) expected[l] = ['injury'];
+      else expected[l] = ['reciprocal'];
+    }
+  });
+
+  // Score: per-lead "right" rules:
+  //   - normal lead: correct if user made NO selection on it
+  //   - abnormal lead in sinus-MI: correct if has selection with expected label (injury/reciprocal)
+  //   - rhythm scenarios (afib/vfib): correct if user marked AT LEAST ONE lead anywhere with
+  //     an expected rhythm label, all leads then count as right (rhythm = global finding)
+  let score = 0, total = 0;
+  const leads = leadMode === '12' ? LEADS_12 : LEADS_6;
+  const perLead = {};
+  // Rhythm scenarios: check if any lead has matching selection
+  const isRhythmScenario = rhythm !== 'sinus';
+  let rhythmDetected = false;
+  if (isRhythmScenario) {
+    const expRhythmLabels = rhythm === 'afib' ? ['no_p', 'irregular'] : ['chaotic'];
+    rhythmDetected = leads.some(l => (quizSelections[l] || []).some(s => expRhythmLabels.includes(s.label)));
+  }
+  leads.forEach(l => {
+    const exp = expected[l];
+    const sels = quizSelections[l] || [];
+    let right;
+    if (isRhythmScenario) {
+      right = rhythmDetected;
+    } else if (exp[0] === 'normal') {
+      right = sels.length === 0;
+    } else {
+      right = sels.some(s => exp.includes(s.label));
+    }
+    total++;
+    if (right) score++;
+    perLead[l] = { selections: sels.map(s => s.label), expected: exp, right };
+    const cell = document.getElementById(`cell-${l}`);
+    if (cell) {
+      cell.classList.remove('quiz-result-correct', 'quiz-result-wrong');
+      cell.classList.add(right ? 'quiz-result-correct' : 'quiz-result-wrong');
+    }
+  });
+
+  // Diagnosis score
+  const diagSel = document.getElementById('quiz-diagnosis');
+  const userDiag = diagSel ? diagSel.value : '';
+  const diagRight = userDiag === currentScenario;
+  const diagAnswered = !!userDiag;
+
+  if (total > 0 || diagAnswered) saveQuizStats(currentScenario, perLead, diagRight);
+
+  // REVEAL — flip flag so ST band + ghost overlay + infarct visualization appear
+  quizRevealed = true;
+  buildInfarct(currentScenario);
+
+  // Show correct answers
+  document.getElementById('info-title').textContent = sc.title;
+  document.getElementById('info-body').textContent = sc.body;
+
+  // Stats summary
+  const stats = loadQuizStats();
+  const scenStats = stats[currentScenario] || {};
+  const leadStats = scenStats.leads || {};
+  const statLines = Object.entries(leadStats).map(([l, s]) => {
+    const tot = s.right + s.wrong;
+    const pct = tot > 0 ? Math.round(100 * s.right / tot) : 0;
+    return { lead: l, pct, right: s.right, wrong: s.wrong };
+  });
+  const top3 = statLines.filter(x => x.pct >= 70).sort((a,b)=>b.pct-a.pct).slice(0, 3)
+    .map(x => `${x.lead} (${x.pct}%)`).join(', ') || '—';
+  const bot3 = [...statLines].sort((a,b) => a.pct - b.pct).filter(x => x.pct < 70).slice(0, 3)
+    .map(x => `${x.lead} (${x.pct}%)`).join(', ') || '—';
+
+  const diagLine = diagAnswered
+    ? (diagRight
+        ? `<div style="color:#3fb950;margin-top:6px"><strong>✓ Diagnosis correct: ${sc.title}</strong></div>`
+        : `<div style="color:#f85149;margin-top:6px"><strong>✗ Your diagnosis:</strong> ${SCENARIOS[userDiag]?.title || userDiag}<br><strong>Correct:</strong> ${sc.title}</div>`)
+    : `<div style="color:var(--text-dim);margin-top:6px;font-style:italic">Diagnosis not selected.</div>`;
+
+  // Teaching feedback: key clues for the correct answer + why user's pick differs
+  let teachingHtml = '';
+  const correctClues = SCENARIO_CLUES[currentScenario];
+  if (correctClues) {
+    teachingHtml += `<div style="margin-top:12px;padding:10px;background:rgba(63,185,80,0.10);border-left:3px solid #3fb950;border-radius:4px">
+      <div style="color:#3fb950;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Key clues for ${sc.title}</div>
+      <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text)">
+        ${correctClues.map(c => `<li style="margin-bottom:3px">${c}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+  // If user picked a different scenario, explain the differential
+  if (diagAnswered && !diagRight) {
+    const userClues = SCENARIO_CLUES[userDiag];
+    if (userClues) {
+      teachingHtml += `<div style="margin-top:8px;padding:10px;background:rgba(248,81,73,0.10);border-left:3px solid #f85149;border-radius:4px">
+        <div style="color:#f85149;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Why this isn't ${SCENARIOS[userDiag].title}</div>
+        <div style="font-size:12px;color:var(--text);margin-bottom:6px">For ${SCENARIOS[userDiag].title} you'd need to see:</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text-dim)">
+          ${userClues.map(c => `<li style="margin-bottom:3px">${c}</li>`).join('')}
+        </ul>
+        ${DIFFERENTIAL_TIPS[userDiag + '_vs_' + currentScenario] || DIFFERENTIAL_TIPS[currentScenario + '_vs_' + userDiag] || ''}
+      </div>`;
+    }
+  }
+
+  document.getElementById('miss-summary').innerHTML = [
+    `<div><strong>Per-lead: ${score} / ${total} correct</strong></div>`,
+    diagLine,
+    teachingHtml,
+    `<div style="margin-top:10px;font-size:11px;color:var(--text-dim)">Strong leads (all-time): ${top3}<br>Weak leads (all-time): ${bot3}</div>`,
+  ].join('');
+
+  // Update quiz bar — collapse to just Next button
+  const scoreDisp = document.getElementById('quiz-score-display');
+  scoreDisp.innerHTML = `Per-lead <strong>${score}/${total}</strong> · Diagnosis ${diagRight ? '<span style="color:#3fb950">✓</span>' : (diagAnswered ? '<span style="color:#f85149">✗</span>' : '—')}`;
+  document.getElementById('btn-submit-quiz').style.display = 'none';
+  if (diagSel) diagSel.disabled = true;
+  document.getElementById('btn-next-quiz').style.display = '';
+  // Disable per-lead radios so they can't change after reveal
+  document.querySelectorAll('.quiz-controls input').forEach(i => i.disabled = true);
+}
+
+document.getElementById('btn-submit-quiz').addEventListener('click', submitQuiz);
+document.getElementById('btn-next-quiz').addEventListener('click', startQuizRound);
+
+document.getElementById('sel-mode').addEventListener('change', e => {
+  appMode = e.target.value;
+  if (appMode === 'quiz') {
+    startQuizRound();
+  } else {
+    resetQuizState();
+    applyScenario(document.getElementById('sel-scenario').value);
+  }
+});
+
+function updateInfoPane() {
+  const sc = SCENARIOS[currentScenario];
+  document.getElementById('info-title').textContent = sc.title;
+  document.getElementById('info-body').textContent = sc.body +
+    (activeVariation && (sc.rhythm || 'sinus') === 'sinus'
+      ? ' Simulated variation: different wave heights and contours, with mild baseline drift and recording noise.' : '');
+  let missHtml = '';
+  if (leadMode === '6') {
+    missHtml = `<strong>6-Lead Mode:</strong> ${sc.missNote6}`;
+    if (sc.miss12) missHtml += `<br><strong>12-Lead adds:</strong> ${sc.miss12}`;
+  } else {
+    missHtml = `<strong>12-Lead Mode:</strong> Full precordial coverage.`;
+    if (sc.missNote6) missHtml += `<br><em>Switch to 6-lead to see what's missed.</em>`;
+  }
+  document.getElementById('miss-summary').innerHTML = missHtml;
+}
+
+// ─────────────────────────────────────────────
+//  LEAD INFO POPUP
+// ─────────────────────────────────────────────
+const popup    = document.getElementById('lead-popup');
+const popupTitle = document.getElementById('popup-title');
+const popupBody  = document.getElementById('popup-body');
+let popupLead  = null;
+
+function setSelectedCell(lead) {
+  document.querySelectorAll('.ecg-cell.selected').forEach(c => c.classList.remove('selected'));
+  if (lead) {
+    const cell = document.getElementById(`cell-${lead}`);
+    if (cell) cell.classList.add('selected');
+  }
+}
+
+function openLeadPopup(lead) {
+  popupLead = lead;
+  const info = LEAD_INFO[lead];
+  const comp = LEAD_COMPUTATION[lead];
+  popupTitle.textContent = `Lead ${lead}`;
+  popupBody.innerHTML = `
+    <div class="formula">${info.formula}</div>
+    <p>${info.desc}</p>
+    <br>
+    <strong>Type:</strong> ${comp.type.charAt(0).toUpperCase() + comp.type.slice(1)}<br>
+    <strong>Scenario ST shift:</strong> ${effectiveSt(lead, SCENARIOS[currentScenario]).toFixed(1)} mm
+  `;
+  popup.style.display = 'block';
+  buildLeadArrows(lead);
+  setSelectedCell(lead);
+}
+
+function positionElectrodePopup(anchor) {
+  if (!anchor) return;
+  const margin = 12, gap = 16;
+  const width = popup.offsetWidth, height = popup.offsetHeight;
+  // Keep the response beside its source; use the space above on narrow screens.
+  const beside = anchor.right + gap + width <= window.innerWidth - margin;
+  const left = beside ? anchor.right + gap : anchor.left - width / 2;
+  const top = beside ? anchor.top - height / 2 : anchor.top - height - gap;
+  popup.style.left = Math.max(margin, Math.min(left, window.innerWidth - width - margin)) + 'px';
+  popup.style.top = Math.max(margin, Math.min(top, window.innerHeight - height - margin)) + 'px';
+  popup.focus({preventScroll:true});
+}
+
+function showLeadPopupForElec(elecName, anchor) {
+  if (elecName === 'RL') {
+    popupLead = null;
+    clearArrows();
+    setSelectedCell(null);
+    elecMeshes.RL.material.emissiveIntensity = 1.2;
+    elecMeshes.RL.scale.setScalar(1.6);
+    popupTitle.textContent = 'RL · Right leg electrode';
+    popupBody.innerHTML = `
+      <div class="formula">Ground / noise reduction</div>
+      <p>RL helps reduce electrical interference. It does not form a diagnostic lead or have its own lead axis.</p>
+      <p>Lead II uses LL and RA. RL is not part of that measurement.</p>
+    `;
+    popup.style.display = 'block';
+    positionElectrodePopup(anchor);
+    return;
+  }
+  const lead = ELECTRODE_LEADS[elecName];
+  if (lead) {
+    openLeadPopup(lead);
+    positionElectrodePopup(anchor);
+  }
+}
+
+document.getElementById('popup-close').addEventListener('click', () => {
+  popup.style.display = 'none';
+  clearArrows();
+  popupLead = null;
+  setSelectedCell(null);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    popup.style.display = 'none';
+    clearArrows();
+    popupLead = null;
+    setSelectedCell(null);
+  }
+});
+
+// Draggable popup
+(function makeDraggable() {
+  const titlebar = document.getElementById('popup-titlebar');
+  let dragging = false, ox=0, oy=0;
+  titlebar.addEventListener('mousedown', e => {
+    dragging = true;
+    ox = e.clientX - popup.offsetLeft;
+    oy = e.clientY - popup.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    popup.style.left = (e.clientX - ox) + 'px';
+    popup.style.top  = (e.clientY - oy) + 'px';
+  });
+  document.addEventListener('mouseup', () => dragging = false);
+
+  // Touch
+  titlebar.addEventListener('touchstart', e => {
+    dragging = true;
+    const t = e.touches[0];
+    ox = t.clientX - popup.offsetLeft;
+    oy = t.clientY - popup.offsetTop;
+  }, {passive:true});
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const t = e.touches[0];
+    popup.style.left = (t.clientX - ox) + 'px';
+    popup.style.top  = (t.clientY - oy) + 'px';
+  }, {passive:true});
+  document.addEventListener('touchend', () => dragging = false);
+})();
+
+// ─────────────────────────────────────────────
+//  HEADER CONTROLS
+// ─────────────────────────────────────────────
+document.getElementById('sel-scenario').addEventListener('change', e => {
+  if (appMode === 'study') applyScenario(e.target.value);
+});
+
+document.getElementById('btn-variation').addEventListener('click', () => {
+  generateVariation();
+});
+
+function updateElectrodeVisibility() {
+  const showPrecordial = leadMode === '12';
+  Object.entries(ELEC_DEFS).forEach(([name, def]) => {
+    if (def.type === 'precordial') {
+      const mesh = elecMeshes[name];
+      if (mesh) mesh.visible = showPrecordial && anatomyView === 'electrodes';
+      const pin = labelPins[name];
+      if (pin) pin.dataset.hidden = showPrecordial ? '' : '1';
+    }
+  });
+  // Clear arrows + close popup if selected lead is now hidden
+  if (!showPrecordial && popupLead && LEAD_COMPUTATION[popupLead]?.type === 'precordial') {
+    clearArrows();
+    popup.style.display = 'none';
+    popupLead = null;
+    setSelectedCell(null);
+  }
+}
+
+document.getElementById('sel-leads').addEventListener('change', e => {
+  leadMode = e.target.value;
+  buildEcgGrid();
+  setTimeout(resizeEcgCanvases, 50);
+  updateInfoPane();
+  updateElectrodeVisibility();
+});
+
+const slBpm = document.getElementById('sl-bpm');
+const bpmReadout = document.getElementById('bpm-readout');
+slBpm.addEventListener('input', () => {
+  bpm = parseInt(slBpm.value);
+  bpmReadout.textContent = bpm;
+});
+
+const slSpeed = document.getElementById('sl-speed');
+const speedReadout = document.getElementById('speed-readout');
+slSpeed.addEventListener('input', () => {
+  speed = parseFloat(slSpeed.value);
+  speedReadout.textContent = speed.toFixed(1) + '×';
+});
+
+// ─────────────────────────────────────────────
+//  MAIN ANIMATION LOOP
+// ─────────────────────────────────────────────
+let lastRenderTime = performance.now() / 1000;
+let ecgDrawThrottle = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const now = performance.now() / 1000;
+  let dt = now - lastRenderTime;
+  lastRenderTime = now;
+  dt = Math.min(dt, 0.1); // cap at 100ms
+  if (document.body.dataset.workspace === 'simulator') return;
+
+  // Advance master clock
+  clock.t += dt * speed;
+
+  // Advance ECG
+  advanceEcg(dt * speed);
+
+  // Keep beat timing synchronized with the trace, with restrained tissue motion.
+  const baseS = reducedMotion.matches ? 1 : ventricleScale(beatPhase);
+  heartUniforms.heartBeat.value = Math.max(0, (1 - baseS) / .06);
+
+  // Update label positions
+  if (anatomyView === 'electrodes') updateLabelPositions();
+  updateInfarctTag();
+
+  // 3D render
+  controls.update();
+  renderer.render(scene, camera);
+
+  // ECG draw (throttle to ~30fps). Subtract interval (don't reset to 0) so draws
+  // happen at uniform spacing — resetting to 0 drops accumulated time and produces
+  // variable inter-frame intervals → another source of waveform jitter.
+  ecgDrawThrottle += dt;
+  if (ecgDrawThrottle >= 1/30) {
+    ecgDrawThrottle -= 1/30;
+    if (ecgDrawThrottle > 0.1) ecgDrawThrottle = 0; // safety: avoid spiral after tab unhide
+    const leads = leadMode === '12' ? LEADS_12 : LEADS_6;
+    leads.forEach(l => drawEcgStrip(l));
+    if (focusedLead) drawEcgStrip(focusedLead, { canvas: focusCanvas, ctx: focusCtx });
+  }
+}
+
+// ─────────────────────────────────────────────
+//  INITIAL BUILD
+// ─────────────────────────────────────────────
+buildEcgGrid();
+setTimeout(() => {
+  resizeEcgCanvases();
+  resizeRenderer();
+}, 100);
+updateInfoPane();
+applyScenario('normal');
+setAnatomyView('heart');
+loadBody();
+
+// Kick off animation
+animate();
+</script>
+<script src="simulation-model.js"></script>
+<script src="simulator-quiz.js"></script>
+<script src="simulator.js"></script>
+</body>
+</html>
