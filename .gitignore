@@ -1,0 +1,6 @@
+comparison/
+/*.jpg
+/*.png
+.claude/
+_site/
+.DS_Store
