@@ -16,10 +16,10 @@
     <header class="sim-intro"><div><div class="sim-kicker">The electrical heart</div><h1>Follow the impulse.</h1><p>Change the conduction. See why the ECG changes.</p></div><p class="sim-intro-note">One clock. Three perspectives.<br>Heart activation · conduction path · lead voltage</p></header>
     <div class="sim-layout">
       <aside class="sim-scenarios" aria-label="Conduction mechanisms"><div class="sim-kicker">Choose a mechanism</div><div class="sim-scenario-note">Start with normal conduction.<br>Then change the path and follow the difference.</div></aside>
-      <section class="sim-stage" data-view="anatomy" aria-label="Electrical activation">
+      <section class="sim-stage" data-view="map" aria-label="Electrical activation">
         <div id="sim-viewport"></div><div id="sim-labels"></div>
         <svg id="sim-map" viewBox="-145 -115 290 254" role="img" aria-labelledby="sim-map-title sim-map-description"></svg>
-        <div class="sim-stage-head"><div role="group" aria-label="Electrical view"><button data-sim-view="anatomy" aria-pressed="true">Anatomy</button><button data-sim-view="heart" aria-pressed="false">Electrical model</button><button data-sim-view="map" aria-pressed="false">Map</button></div><label class="sim-overlay-toggle"><input id="sim-overlay" type="checkbox" checked> Electrical overlay</label></div>
+        <div class="sim-stage-head"><div role="group" aria-label="Electrical view"><button data-sim-view="anatomy" aria-pressed="false">Anatomy</button><button data-sim-view="heart" aria-pressed="false">Electrical model</button><button data-sim-view="map" aria-pressed="true">Map</button></div><label class="sim-overlay-toggle"><input id="sim-overlay" type="checkbox" checked> Electrical overlay</label></div>
         <div id="sim-anatomy-status" role="status" aria-live="polite">Loading textured heart…</div>
         <a class="sim-heart-credit" href="https://sketchfab.com/3d-models/realistic-human-heart-3f8072336ce94d18b3d0d055a1ece089" target="_blank" rel="noopener noreferrer">Heart by neshallads · CC BY 4.0</a>
         <div class="sim-stage-hint" id="sim-view-hint">Drag to rotate · scroll to zoom · R / L are patient sides</div>
@@ -598,7 +598,7 @@
     else if(e.code==='ArrowRight'){e.preventDefault();seek((state.time+10)%model.cycleMs);}
     else if(e.code==='ArrowLeft'){e.preventDefault();seek((state.time-10+model.cycleMs)%model.cycleMs);}
   });
-  initialize3d();setScenario('normal');setView(simRenderer?'anatomy':'map');syncQuizUI();syncPlayback();workspace(location.hash==='#explorer'?'explorer':'simulator');
+  initialize3d();setScenario('normal');setView('map');syncQuizUI();syncPlayback();workspace(location.hash==='#explorer'?'explorer':'simulator');
   function frame(now) {
     const dt=lastFrame?Math.min(now-lastFrame,80):0;lastFrame=now;
     if(document.body.dataset.workspace==='simulator'&&!document.hidden){
