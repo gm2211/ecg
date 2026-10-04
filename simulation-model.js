@@ -22,12 +22,12 @@
       defaults: { bpm: 75, avDelay: 150, branchDelay: 60, accessory: 90 } },
     { id: 'rbbb', label: 'Right bundle branch block', short: 'RBBB',
       summary: 'Keep the early sequence intact. Watch the right ventricle finish late.',
-      mechanism: 'The left bundle still activates the septum and left ventricle normally. Slower spread through myocardium then activates the right ventricular free wall.',
+      mechanism: 'The left bundle still activates the septum and left ventricle normally. Cell-to-cell spread through septal and ventricular myocardium recruits the right ventricular free wall late. The delayed tissue is responding to conducted excitation, not generating a separate beat.',
       ecg: 'The terminal rightward/anterior vector creates R′ in V1 and a terminal S in I and V6. The prolonged sequence widens the QRS.',
       defaults: { bpm: 75, avDelay: 150, branchDelay: 60, accessory: 90 } },
     { id: 'lbbb', label: 'Left bundle branch block', short: 'LBBB',
       summary: 'Reverse septal activation, then recruit the left ventricle slowly.',
-      mechanism: 'The right bundle activates first. Septal activation reverses to right to left, and slower myocardial spread delays the large left ventricular mass.',
+      mechanism: 'The right bundle activates first. Septal activation reverses to right to left, and slower cell-to-cell spread recruits the left ventricular free wall. This example shows a proximal block; the exact sequence and distal Purkinje recruitment vary with the site of disease.',
       ecg: 'A broad, predominantly negative QRS in V1 and broad positive QRS in I/V6. The normal small septal q in lateral leads is lost.',
       defaults: { bpm: 75, avDelay: 150, branchDelay: 60, accessory: 90 } },
     { id: 'wpw', label: 'Ventricular pre-excitation', short: 'WPW pattern',
@@ -62,6 +62,9 @@
     { label: 'Clinical Methods: intraventricular conduction', url: 'https://www.ncbi.nlm.nih.gov/books/NBK354/' },
     { label: 'AHA/ACCF/HRS ECG standardization: conduction disturbances', url: 'https://www.jacc.org/doi/10.1016/j.jacc.2008.12.013' },
     { label: 'Wolff–Parkinson–White and AVRT mechanisms', url: 'https://www.ncbi.nlm.nih.gov/books/NBK554437/' },
+    { label: 'University of Minnesota: conduction and gap junctions', url: 'https://www.vhlab.umn.edu/atlas/conduction-system-tutorial/gap-junctions.shtml' },
+    { label: 'Human conduction-system microanatomy (Stephenson et al.)', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5543124/' },
+    { label: 'Human LBBB activation mapping (Wyndham et al.)', url: 'https://www.ahajournals.org/doi/pdf/10.1161/01.cir.61.4.696' },
   ];
   const pulse = (time, start, end) => {
     if (time <= start || time >= end) return 0;
@@ -133,7 +136,7 @@
     }
     const paths = [];
     function path(id, label, points, start, end, extras) {
-      paths.push(Object.assign({ id, label, points, start, end }, extras || {}));
+      paths.push(Object.assign({ id, label, kind: 'specialized-tract', points, start, end }, extras || {}));
     }
     if (!reentry) {
       path('sa-atria', 'SA node to atria', [landmarks.sa, [-0.4, 0.65, 0.12], landmarks.av], 0, 65);
@@ -142,11 +145,44 @@
       path('atrial-return', 'Retrograde atrial spread', [landmarks.accessoryA, landmarks.la, [0, 0.54, 0.10], landmarks.av], 0, 70, { retrograde: true });
     }
     path('av-his', 'AV node and His conduction', [landmarks.av, [-0.025, 0.10, 0.14], landmarks.his], 55, avDelay);
-    path('right-bundle', 'Right bundle branch', [landmarks.his, [-0.06, -0.3, 0.13], landmarks.rv], avDelay, q + 30, { blocked: id === 'rbbb' });
-    path('left-bundle', 'Left bundle branch', [landmarks.his, [0.12, -0.3, 0.08], landmarks.lv], avDelay, q + 30, { blocked: id === 'lbbb' });
+    // A small schematic fan represents the distributed subendocardial network,
+    // not one serial cable that visits the whole ventricular wall. Chamber-local
+    // coordinates are shared with activation() and mapped to atlas chamber bounds
+    // by the anatomy renderer. +x remains patient-left within either chamber.
+    const fans = [
+      [[0.80, -0.60, 0.10], [0.90, 0.20, 0.08], [0.75, 0.62, 0.05]],
+      [[0.30, -0.60, 0.50], [0.65, 0.00, 0.68], [0.50, 0.53, 0.70]],
+      [[0.25, -0.55, -0.40], [0.65, -0.05, -0.65], [0.45, 0.50, -0.70]],
+    ];
+    for (const chamber of ['RV', 'LV']) {
+      const isRight = chamber === 'RV', side = isRight ? -1 : 1;
+      const disabled = id === (isRight ? 'rbbb' : 'lbbb');
+      const apex = [-0.30 * side, isRight ? -0.85 : -0.88, isRight ? 0.10 : 0.15];
+      const primary = regions.find(r => r.id === chamber.toLowerCase());
+      const last = Math.max(...regions.filter(r => r.chamber === chamber && r.id !== 'preexcitation').map(r => r.end));
+      // Follow the same normal recruitment interpolation as the myocardial
+      // field. WPW's competing accessory wavefront does not make the Purkinje
+      // route run backward or start early. Blocked fans have no antegrade pulse.
+      const recruitmentTime = ([x, y, z]) => primary.onset +
+        (0.70 * (y + 1) / 2 + 0.25 * (side * x + 1) / 2 + 0.05 * (z + 1) / 2) * (last - primary.onset);
+      const schematicPoint = ([x, y, z]) => [side * 0.43 + x * 0.29, -0.47 + y * 0.43, 0.10 + z * 0.24];
+      const bundleEnd = schematicPoint(apex), arrival = recruitmentTime(apex);
+      path(isRight ? 'right-bundle' : 'left-bundle', isRight ? 'Right bundle branch' : 'Left bundle branch',
+        [landmarks.his, [side * 0.09, -0.30, 0.12], bundleEnd], avDelay, arrival, { chamber, blocked: disabled });
+      fans.forEach((fan, index) => {
+        const chamberPoints = [apex, ...fan.map(([x, y, z]) => [side * x, y, z])];
+        const pointTimes = chamberPoints.map(recruitmentTime);
+        path(`purkinje-${chamber.toLowerCase()}-${index + 1}`, `${chamber} Purkinje network · branch ${index + 1}`,
+          chamberPoints.map(schematicPoint), pointTimes[0], pointTimes[pointTimes.length - 1],
+          { kind: 'purkinje', chamber, chamberPoints, pointTimes, blocked: disabled, schematic: true });
+      });
+    }
     if (blocked) {
       const toRight = id === 'rbbb';
-      path('myocardial-spread', 'Slow spread through ventricular myocardium', [toRight ? landmarks.lv : landmarks.rv, landmarks.septum, toRight ? landmarks.rv : landmarks.lv], q + (toRight ? 56 : 24), qrsEnd);
+      // A distributed tissue field, never a line/bead bouncing between chamber
+      // landmarks. Its clock is the same delayed regional activation as the ECG.
+      path('myocardial-spread', 'Slow cell-to-cell myocardial spread', [], q + (toRight ? 56 : 24), qrsEnd,
+        { kind: 'myocardial-field', chamber: toRight ? 'RV' : 'LV', origin: 'septum', direction: 'septal-to-free-wall' });
     }
     if (id === 'wpw') {
       path('accessory', 'Antegrade left free-wall accessory pathway', [landmarks.la, landmarks.accessoryA, landmarks.accessoryV], 25, accessory, { accessory: true });
