@@ -50,6 +50,11 @@
       const size = bounds.getSize(new THREE.Vector3());
       return source.map((value, axis) => 2 * (value - center.getComponent(axis)) / Math.max(size.getComponent(axis), 1e-9));
     };
+    const recruitment = (chamber, point) => {
+      const side = chamber === 'RV' ? -1 : 1;
+      const [x, y, z] = point;
+      return 0.70 * (y + 1) / 2 + 0.25 * (side * x + 1) / 2 + 0.05 * (z + 1) / 2;
+    };
     const valveCenter = name => {
       const entries = view.entries.filter(item => item.name === name && item.sourceBounds);
       if (!entries.length) throw new Error(`Prepared heart is missing valve mesh ${name}`);
@@ -143,7 +148,7 @@
           throw new Error(`${fan.id} needs at least two chamber-local points`);
         }
         const anchors = fan.chamberPoints.map(point => anchor(chamber, point));
-        paths.push({
+        const mainFan = {
           id: fan.id,
           label: fan.label,
           kind: 'purkinje',
@@ -153,7 +158,54 @@
           chamberPoints: anchors.map(item => item.chamberPoint),
           timingNeedsRecompute: true,
           blocked: !!fan.blocked,
-        });
+        };
+        paths.push(mainFan);
+
+        // The chamber meshes are a surface scaffold, not segmented
+        // endocardium or Purkinje fibers. Add three terminal arbors to each
+        // schematic fan. Each starts at an exact fan sample and is projected
+        // back onto the real chamber triangles so it follows the tapered wall.
+        // Root-owned timing is recomputed from these projected chamberPoints.
+        for (let branchIndex = 1; branchIndex <= 3; branchIndex++) {
+          const parentIndex = Math.min(branchIndex, anchors.length - 2);
+          const root = anchors[parentIndex];
+          const rootCoords = root.chamberPoint;
+          const lateral = (branchIndex % 2 ? 1 : -1) * (chamber === 'RV' ? -1 : 1);
+          const depth = branchIndex === 2 ? 1 : -1;
+          const offsets = [
+            [lateral * 0.16, 0.18, depth * 0.14],
+            [lateral * 0.28, 0.38, depth * 0.24],
+          ];
+          const childAnchors = [root];
+          for (const [dx, dy, dz] of offsets) {
+            const previous = childAnchors.at(-1).chamberPoint;
+            let projected = null;
+            for (let rise = 0; rise <= 0.4; rise += 0.04) {
+              const desired = [rootCoords[0] + dx, rootCoords[1] + dy + rise, rootCoords[2] + dz];
+              const candidate = anchor(chamber, desired);
+              if (recruitment(chamber, candidate.chamberPoint) > recruitment(chamber, previous) + 1e-6) {
+                projected = candidate;
+                break;
+              }
+            }
+            if (!projected) throw new Error(`${fan.id} branch ${branchIndex} does not recruit monotonically after mesh projection`);
+            childAnchors.push(projected);
+          }
+          paths.push({
+            id: `${fan.id}-branch-${branchIndex}`,
+            sourceId: fan.id,
+            parentId: fan.id,
+            branchParentProgress: parentIndex / (anchors.length - 1),
+            label: `${fan.label} arbor ${branchIndex}`,
+            kind: 'purkinje',
+            chamber,
+            points: childAnchors.map(item => item.position),
+            pointChambers: childAnchors.map(item => item.chamber),
+            chamberPoints: childAnchors.map(item => item.chamberPoint),
+            timingNeedsRecompute: true,
+            blocked: !!fan.blocked,
+          });
+        }
       }
     }
 

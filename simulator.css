@@ -52,8 +52,11 @@ body[data-workspace="explorer"] #simulator { display: none; }
 .sim-pin.anatomy-node { color: #e9d9b1; font-size: 9px; background: #19283ccf; padding: 3px 5px; border-radius: 4px; }
 .sim-heart-credit { position: absolute; bottom: 76px; right: 18px; z-index: 2; color: #9da8ba; font-size: 8px; text-decoration: none; }
 .sim-heart-credit:hover { color: #fff; text-decoration: underline; }
-.sim-network-note { position: absolute; bottom: 76px; left: 20px; color: #abb8cc; font-size: 8px; pointer-events: none; }
-.sim-stage:not([data-view="anatomy"]) .sim-network-note, .sim-stage[data-see-inside="false"] .sim-network-note { display: none; }
+.sim-network-note { position: absolute; bottom: 79px; left: 20px; color: #abc0d3; font-size: 8px; pointer-events: none; }
+.sim-network-note strong { display: block; color: #78dce8; font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+.sim-network-note strong::before { content: ''; display: inline-block; width: 16px; border-top: 2px solid #78dce8; margin-right: 6px; vertical-align: 3px; }
+.sim-network-note span { display: block; }
+.sim-stage:not([data-view="anatomy"]) .sim-network-note, .sim-stage[data-fibers="false"] .sim-network-note { display: none; }
 #sim-anatomy-status { position: absolute; z-index: 3; inset: 45% 15% auto; text-align: center; color: #d7dfed; font-size: 12px; }
 #sim-anatomy-status[hidden] { display: none; }
 #sim-anatomy-status button { background: #35425c; color: #fff; border: 1px solid #687991; border-radius: 5px; padding: 6px 10px; margin-left: 8px; }
@@ -484,6 +487,8 @@ body[data-workspace="simulator"] {
   #simulator[data-observe="together"] .sim-stage-hint { display: none; }
   #simulator[data-observe="together"] .sim-heart-credit { bottom: 29px; font-size: 6px; }
   #simulator[data-observe="together"] .sim-network-note { left: 7px; bottom: 29px; font-size: 6px; }
+  #simulator[data-observe="together"] .sim-network-note strong { font-size: 8px; }
+  #simulator[data-observe="together"] .sim-network-note span { display: none; }
   #simulator[data-observe="together"] .sim-pin.anatomy-node { display: none; }
   #simulator[data-observe="together"] .sim-legend { font-size: 6px; gap: 4px; }
   #simulator[data-observe="together"] .sim-legend span::before { margin-right: 3px; width: 4px; height: 4px; }

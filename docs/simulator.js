@@ -22,7 +22,7 @@
         <div class="sim-stage-head"><div role="group" aria-label="Electrical view"><button data-sim-view="anatomy" aria-pressed="false">Anatomy</button><button data-sim-view="heart" aria-pressed="false">Electrical model</button><button data-sim-view="map" aria-pressed="true">Map</button></div><div class="sim-anatomy-tools"><label><input id="sim-transparent" type="checkbox" checked> See inside</label><label><input id="sim-fibers" type="checkbox" checked> Fibers</label><label><input id="sim-overlay" aria-label="Electrical overlay" type="checkbox" checked> Activation</label></div></div>
         <div id="sim-anatomy-status" role="status" aria-live="polite">Loading reference heart…</div>
         <a class="sim-heart-credit" href="https://humanatlas.io/3d-reference-library" target="_blank" rel="noopener noreferrer">Heart: Human Reference Atlas · CC BY 4.0</a>
-        <span class="sim-network-note">Schematic conduction fibers</span>
+        <span class="sim-network-note"><strong>Purkinje fibers</strong><span>Branching network · schematic</span></span>
         <div class="sim-stage-hint" id="sim-view-hint">Drag to rotate · scroll to zoom · R / L are patient sides</div>
         <div class="sim-stage-bottom"><div class="sim-legend"><span>Resting</span><span class="active">Depolarizing</span><span class="depolarized">Depolarized</span><span class="recover">Repolarizing</span></div><button id="sim-reset-view">Reset view</button></div>
       </section>
@@ -231,7 +231,7 @@
   let simRenderer, simScene, simCamera, orbit, heartGroup, anatomyGroup, pathwayGroup, anatomyPathGroup, vectorArrow, leadArrow, anatomicalView;
   const anatomyFields=[];
   const anatomyMaterials=[], anatomyRoutes=[], anatomyNodes=[];
-  const anatomyUniforms={activationTime:{value:0},activationCycle:{value:800},activationStrength:{value:1}};
+  const anatomyUniforms={activationTime:{value:0},activationCycle:{value:800},activationStrength:{value:1},anatomyGhost:{value:1}};
   let anatomyLoading=false;
   const tissue = [], labels = [], pathways = [], mapPaths = [], mapCells = [];
   const chamberDefs = [
@@ -329,12 +329,22 @@
   function syncAnatomyDisplay() {
     const transparent=$('sim-transparent').checked, fibers=transparent&&$('sim-fibers').checked;
     stage.dataset.seeInside=String(transparent);
+    stage.dataset.fibers=String(fibers);
+    anatomyUniforms.anatomyGhost.value=transparent?1:0;
     $('sim-fibers').disabled=!transparent;
     if(anatomyPathGroup)anatomyPathGroup.visible=fibers;
-    for(const {material,chamber,name} of anatomyMaterials){
-      material.transparent=transparent;
-      material.opacity=transparent?(chamber?.23:name.includes('valve')?.13:.40):1;
-      material.depthWrite=!transparent; material.needsUpdate=true;
+    for(const {mesh,depthMesh,material,originalColor,originalRoughness,chamber,outer,surfaceVessel} of anatomyMaterials){
+      // A depth-only shell removes stacked back walls. Interior structures
+      // return in the opaque anatomy view; they do not cloud the fiber view.
+      mesh.visible=!transparent||outer||(!chamber&&!surfaceVessel&&!mesh.name.includes('valve'));
+      if(depthMesh)depthMesh.visible=transparent;
+      material.transparent=transparent&&outer;
+      material.opacity=transparent&&outer?.54:1;
+      material.depthWrite=!material.transparent;
+      material.side=transparent?THREE.FrontSide:THREE.DoubleSide;
+      material.color.copy(transparent&&outer?new THREE.Color('#8fa7ba').convertSRGBToLinear():originalColor);
+      material.roughness=transparent?.9:originalRoughness;
+      material.needsUpdate=true;
     }
     anatomyNodes.forEach(l=>l.el.hidden=!fibers);
   }
@@ -357,30 +367,34 @@
       mappedTimes.set(route.id,times);
     }
     for(const route of network.paths){
-      const source=model.paths.find(p=>p.id===route.id);if(!source||source.kind==='myocardial-field'||route.points.length<2)continue;
-      const path={...source};
+      const source=model.paths.find(p=>p.id===(route.sourceId||route.id));if(!source||source.kind==='myocardial-field'||route.points.length<2)continue;
+      const path={...source,id:route.id};
       if(mappedTimes.has(path.id)){path.pointTimes=mappedTimes.get(path.id);path.start=path.pointTimes[0];path.end=path.pointTimes.at(-1);}
       if(path.id==='right-bundle'||path.id==='left-bundle')path.end=mappedTimes.get(`purkinje-${path.chamber.toLowerCase()}-1`)[0];
       const curve=new THREE.CatmullRomCurve3(route.points,false,'centripetal');
-      const material=new THREE.MeshBasicMaterial({color:path.blocked?0x926575:path.accessory?0xe69aaa:0xbdc8e8});
-      const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,56,path.kind==='purkinje'?.007:.012,6,false),material);
+      const isFiber=path.kind==='purkinje',isTwig=!!route.parentId;
+      const material=new THREE.MeshBasicMaterial({color:new THREE.Color(path.blocked?0xb67f93:path.accessory?0xe69aaa:isFiber?0x78dce8:0xf3dfab).convertSRGBToLinear(),transparent:true,opacity:path.blocked?.6:isTwig?.95:1,depthTest:false,depthWrite:false,toneMapped:false});
+      const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,isTwig?24:56,isTwig?.006:isFiber?.009:.012,6,false),material);
+      mesh.renderOrder=10;
       anatomyPathGroup.add(mesh);
       const dots=[];
       // A short illuminated segment makes propagation legible without a large bead.
       for(let i=0;i<5;i++){
-        const dot=new THREE.Mesh(new THREE.SphereGeometry(path.kind==='purkinje'?.012:.018,8,6),new THREE.MeshBasicMaterial({color:path.accessory?0xf8adbb:0xffd46c}));
+        const dot=new THREE.Mesh(new THREE.SphereGeometry(isTwig?.012:isFiber?.018:.022,8,6),new THREE.MeshBasicMaterial({color:new THREE.Color(path.accessory?0xf8adbb:0xffd46c).convertSRGBToLinear(),transparent:true,depthTest:false,depthWrite:false,toneMapped:false}));
+        dot.renderOrder=12;
         anatomyPathGroup.add(dot);dots.push(dot);
       }
       anatomyRoutes.push({path,curve,dots,material});
       if(path.blocked&&path.kind!=='purkinje'){
         const point=curve.getPoint(.3), d=.033;
-        const cross=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([point.clone().add(v3([-d,-d,0])),point.clone().add(v3([d,d,0])),point.clone().add(v3([-d,d,0])),point.clone().add(v3([d,-d,0]))]),new THREE.LineBasicMaterial({color:0xe0909e}));
+        const cross=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([point.clone().add(v3([-d,-d,0])),point.clone().add(v3([d,d,0])),point.clone().add(v3([-d,d,0])),point.clone().add(v3([d,-d,0]))]),new THREE.LineBasicMaterial({color:0xe0909e,transparent:true,depthTest:false,depthWrite:false,toneMapped:false}));
+        cross.renderOrder=13;
         anatomyPathGroup.add(cross);
       }
     }
     for(const node of network.nodes){
       const position=node.position;
-      const mesh=new THREE.Mesh(new THREE.SphereGeometry(.022,12,10),new THREE.MeshBasicMaterial({color:0xf6d089}));mesh.position.copy(position);anatomyPathGroup.add(mesh);
+      const mesh=new THREE.Mesh(new THREE.SphereGeometry(.022,12,10),new THREE.MeshBasicMaterial({color:0xf6d089,transparent:true,depthTest:false,depthWrite:false,toneMapped:false}));mesh.renderOrder=11;mesh.position.copy(position);anatomyPathGroup.add(mesh);
       if(['sa','av','his'].includes(node.id))anatomyNodes.push(createLabel(node.label,position.clone().add(v3([node.id==='sa'?-.12:.10,.02,.03])).toArray(),'anatomy-node'));
     }
     syncAnatomyDisplay();
@@ -415,13 +429,16 @@
           anatomyFields.push({geometry,zones});
         }
         const material=HeartAnatomy.material(THREE,name);
-        anatomyMaterials.push({material,chamber,name});
         if(chamber) material.onBeforeCompile=shader=>{
 
           Object.assign(shader.uniforms,anatomyUniforms);
           shader.vertexShader='attribute vec4 activationSchedule; varying vec4 vActivationSchedule;\n'+shader.vertexShader;
           shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvActivationSchedule = activationSchedule;');
-          shader.fragmentShader='varying vec4 vActivationSchedule; uniform float activationTime; uniform float activationCycle; uniform float activationStrength;\n'+shader.fragmentShader;
+          shader.fragmentShader='varying vec4 vActivationSchedule; uniform float activationTime; uniform float activationCycle; uniform float activationStrength; uniform float anatomyGhost;\n'+shader.fragmentShader;
+          shader.fragmentShader=shader.fragmentShader.replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',`
+            float rim = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.0);
+            diffuseColor.a *= mix(1.0, min(1.0, 0.22 + 0.78 * rim + (0.35 * front + 0.12 * recovery) * activationStrength), anatomyGhost);
+            gl_FragColor = vec4( outgoingLight, diffuseColor.a );`);
           shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
             float depolAge = mod(activationTime - vActivationSchedule.x + 2.0 * activationCycle, activationCycle);
             float recoveryAge = mod(activationTime - vActivationSchedule.y + 2.0 * activationCycle, activationCycle);
@@ -430,9 +447,17 @@
             float recovery = sin(clamp(recoveryAge / vActivationSchedule.z, 0.0, 1.0) * 3.14159265);
             float plateau = step(22.0, depolAge) * (1.0 - step(mod(vActivationSchedule.y - vActivationSchedule.x + activationCycle, activationCycle), depolAge));
             vec3 electricalGlow = vec3(1.0, 0.52, 0.075) * front * 0.32 + vec3(0.04, 0.55, 0.4) * recovery * 0.14 + vec3(0.2, 0.08, 0.25) * plateau * 0.035;
-            totalEmissiveRadiance += electricalGlow * vActivationSchedule.w * activationStrength;`);
+            totalEmissiveRadiance += electricalGlow * vActivationSchedule.w * activationStrength * mix(1.0, 2.5, anatomyGhost);`);
         };
         const mesh=new THREE.Mesh(geometry,material); mesh.name=name; mesh.userData.chamber=chamber; mesh.renderOrder=chamber?2:3; anatomyGroup.add(mesh);
+        const outer=['VH_M_left_cardiac_atrium','VH_M_right_cardiac_atrium','VH_M_heart_left_ventricle','VH_M_heart_right_ventricle'].includes(name);
+        const surfaceVessel=/coronary|descending_artery|marginal|diagonal_branch|cardiac_vein|interventricular_vein/.test(name);
+        let depthMesh;
+        if(outer){
+          depthMesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,side:THREE.FrontSide}));
+          depthMesh.renderOrder=-10;anatomyGroup.add(depthMesh);
+        }
+        anatomyMaterials.push({mesh,depthMesh,material,originalColor:material.color.clone(),originalRoughness:material.roughness,chamber,outer,surfaceVessel});
       });
       anatomyLoading=false; status.hidden=true; stage.dataset.anatomyState='ready'; refreshAnatomyTiming();rebuildAnatomyPaths();syncAnatomyDisplay();
     },undefined,()=>{

@@ -98,6 +98,9 @@ const expectedIds = [
   'purkinje-rv-1', 'purkinje-rv-2', 'purkinje-rv-3',
   'purkinje-lv-1', 'purkinje-lv-2', 'purkinje-lv-3',
 ];
+for (const fanId of expectedIds.filter(id => /^purkinje-(rv|lv)-[1-3]$/.test(id))) {
+  for (let branch = 1; branch <= 3; branch++) expectedIds.push(`${fanId}-branch-${branch}`);
+}
 assert.deepEqual([...byId.keys()].sort(), expectedIds.slice().sort(), 'Expected one geometry for each model path ID');
 assert.equal(overlay.nodes.length, 5, 'Expose only SA, AV, His, and one Purkinje anchor per ventricle');
 assert.deepEqual(overlay.nodes.map(node => node.id).sort(), ['av', 'his', 'purkinje-lv', 'purkinje-rv', 'sa']);
@@ -133,7 +136,7 @@ assert.ok(avSource.z < hisSource.z, 'AV node should sit posterior to His');
 
 for (const chamber of ['RV', 'LV']) {
   const bundle = byId.get(chamber === 'RV' ? 'right-bundle' : 'left-bundle');
-  const fans = [...byId.values()].filter(path => path.kind === 'purkinje' && path.chamber === chamber);
+  const fans = [...byId.values()].filter(path => path.kind === 'purkinje' && path.chamber === chamber && !path.parentId);
   assert.equal(fans.length, 3, `${chamber} needs three fan branches`);
   assert.ok(bundle.points.at(-1).distanceTo(fans[0].points[0]) < 1e-7, `${chamber} bundle should meet its fan apex`);
   const side = chamber === 'RV' ? -1 : 1;
@@ -156,6 +159,21 @@ for (const chamber of ['RV', 'LV']) {
       recovered.forEach((value, axis) => assert.ok(close(value, fan.chamberPoints[index][axis]), `${fan.id} point ${index} timing coordinate matches the projected surface`));
       recovered.forEach(value => assert.ok(Math.abs(value) <= 1.0001, `${fan.id} point ${index} remains inside chamber coordinates without clamping`));
     });
+    const children = [...byId.values()].filter(path => path.parentId === fan.id);
+    assert.equal(children.length, 3, `${fan.id} has three visibly branching terminal arbors`);
+    for (const child of children) {
+      assert.equal(child.kind, 'purkinje', `${child.id} remains a conduction path`);
+      assert.equal(child.sourceId, fan.id, `${child.id} keeps model lookup on its parent fan`);
+      assert.equal(child.chamber, chamber, `${child.id} stays in the parent chamber`);
+      assert.equal(child.blocked, fan.blocked, `${child.id} inherits blocked state`);
+      assert.equal(child.timingNeedsRecompute, true, `${child.id} requests timing from projected coordinates`);
+      const parentIndex = Math.round(child.branchParentProgress * (fan.points.length - 1));
+      assert.ok(child.points[0].distanceTo(fan.points[parentIndex]) < 1e-7, `${child.id} starts at its exact parent junction`);
+      assert.equal(child.points.length, child.chamberPoints.length, `${child.id} geometry and timing samples align`);
+      const childTimes = child.chamberPoints.map(([x, y, z]) => primary.onset +
+        (0.70 * (y + 1) / 2 + 0.25 * (side * x + 1) / 2 + 0.05 * (z + 1) / 2) * (last - primary.onset));
+      for (let i = 1; i < childTimes.length; i++) assert.ok(childTimes[i] > childTimes[i - 1], `${child.id} recruits monotonically: ${childTimes.join(', ')}`);
+    }
   }
 }
 
@@ -167,6 +185,9 @@ for (const [scenario, blockedId] of [['rbbb', 'purkinje-rv-1'], ['lbbb', 'purkin
   const scenarioModel = EPSimModel.createModel({ scenario });
   const scenarioPaths = new Map(ConductionAnatomy.create(THREE, view, scenarioModel.paths).paths.map(path => [path.id, path]));
   assert.equal(scenarioPaths.get(blockedId).blocked, true, `${scenario} keeps the affected fan marked blocked`);
+  for (const branch of scenarioPaths.values()) {
+    if (branch.sourceId === blockedId) assert.equal(branch.blocked, true, `${scenario} blocks ${branch.id} with its parent`);
+  }
   const otherId = scenario === 'rbbb' ? 'purkinje-lv-1' : 'purkinje-rv-1';
   assert.equal(scenarioPaths.get(otherId).blocked, false, `${scenario} leaves the other ventricle's fan available`);
 }
