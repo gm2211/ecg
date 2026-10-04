@@ -19,21 +19,22 @@
       <section class="sim-stage" data-view="map" aria-label="Electrical activation">
         <div id="sim-viewport"></div><div id="sim-labels"></div>
         <svg id="sim-map" viewBox="-145 -115 290 254" role="img" aria-labelledby="sim-map-title sim-map-description"></svg>
-        <div class="sim-stage-head"><div role="group" aria-label="Electrical view"><button data-sim-view="anatomy" aria-pressed="false">Anatomy</button><button data-sim-view="heart" aria-pressed="false">Electrical model</button><button data-sim-view="map" aria-pressed="true">Map</button></div><label class="sim-overlay-toggle"><input id="sim-overlay" type="checkbox" checked> Electrical overlay</label></div>
+        <div class="sim-stage-head"><div role="group" aria-label="Electrical view"><button data-sim-view="anatomy" aria-pressed="false">Anatomy</button><button data-sim-view="heart" aria-pressed="false">Electrical model</button><button data-sim-view="map" aria-pressed="true">Map</button></div><div class="sim-anatomy-tools"><label><input id="sim-transparent" type="checkbox" checked> See inside</label><label><input id="sim-fibers" type="checkbox" checked> Fibers</label><label><input id="sim-overlay" aria-label="Electrical overlay" type="checkbox" checked> Activation</label></div></div>
         <div id="sim-anatomy-status" role="status" aria-live="polite">Loading reference heart…</div>
         <a class="sim-heart-credit" href="https://humanatlas.io/3d-reference-library" target="_blank" rel="noopener noreferrer">Heart: Human Reference Atlas · CC BY 4.0</a>
+        <span class="sim-network-note">Schematic conduction fibers</span>
         <div class="sim-stage-hint" id="sim-view-hint">Drag to rotate · scroll to zoom · R / L are patient sides</div>
         <div class="sim-stage-bottom"><div class="sim-legend"><span>Resting</span><span class="active">Depolarizing</span><span class="depolarized">Depolarized</span><span class="recover">Repolarizing</span></div><button id="sim-reset-view">Reset view</button></div>
       </section>
-      <section class="sim-traces" aria-label="Synchronized ECG traces">
-        <div class="sim-trace-head"><div><h2>The same beat, on the ECG.</h2><p>Click a trace to inspect that instant</p></div><label for="sim-lead">View <select id="sim-lead">${['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'].map(l=>`<option ${l==='II'?'selected':''}>${l}</option>`).join('')}</select></label></div>
+      <section class="sim-traces" data-traces="single" aria-label="Synchronized ECG traces">
+        <div class="sim-trace-head"><div><h2>One beat. Two views.</h2><p>Gold cursor matches the heart · click to inspect</p></div><div class="sim-trace-options"><label for="sim-lead">Lead <select id="sim-lead">${['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'].map(l=>`<option ${l==='II'?'selected':''}>${l}</option>`).join('')}</select></label><button id="sim-trace-layout" aria-pressed="false">Compare 3</button></div></div>
         <div class="sim-strip"><canvas id="sim-ecg-0" aria-label="Lead II simulated ECG"></canvas><span class="sim-strip-name" id="sim-selected-lead">II · inferior view</span></div>
         <div class="sim-strip"><canvas id="sim-ecg-1" aria-label="Lead V1 simulated ECG"></canvas><span class="sim-strip-name">V1 · right precordial</span></div>
         <div class="sim-strip"><canvas id="sim-ecg-2" aria-label="Lead V6 simulated ECG"></canvas><span class="sim-strip-name">V6 · left lateral</span></div>
-        <div class="sim-trace-foot"><span class="sim-trace-key">Current</span><label class="sim-trace-key baseline"><input type="checkbox" id="sim-compare" checked> Normal reference</label><span>100 ms / large box · schematic mV</span></div>
+        <div class="sim-trace-foot"><label class="sim-trace-key baseline"><input type="checkbox" id="sim-compare" checked> Normal reference</label><span class="sim-paper-scale">25 mm/s · 10 mm/mV · 200 ms / large square</span></div>
       </section>
       <section class="sim-player" aria-label="Beat playback">
-        <div class="sim-transport"><button id="sim-play" class="sim-play">Ⅱ Pause</button><button id="sim-step" class="sim-step" title="Pause and advance 10 milliseconds">+10 ms</button><output id="sim-time" class="sim-time">0 ms</output><input id="sim-scrub" type="range" min="0" max="800" value="0" step="1" aria-label="Time within beat"><label for="sim-speed">Speed <select id="sim-speed"><option value="0.1">0.1×</option><option value="0.25" selected>0.25×</option><option value="0.5">0.5×</option><option value="1">1×</option></select></label></div>
+        <div class="sim-transport"><button id="sim-play" class="sim-play">Ⅱ Pause</button><button id="sim-step" class="sim-step" title="Pause and advance 10 milliseconds">+10 ms</button><output id="sim-time" class="sim-time">0 ms</output><input id="sim-scrub" type="range" min="0" max="800" value="0" step="1" aria-label="Time within beat"><label for="sim-speed">Speed <select id="sim-speed"><option value="0.05">0.05×</option><option value="0.1" selected>0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1">1×</option></select></label></div>
         <div id="sim-events" class="sim-events" aria-label="Jump to an electrical event"></div>
       </section>
     </div>
@@ -50,13 +51,13 @@
     <details class="sim-footnote"><summary>Educational model · assumptions & sources</summary><p>This is an educational conduction simulator, not a clinically validated ECG solver. A shared regional activation schedule drives the 3D wavefront, conduction map, electrical vector and schematic lead projections. Geometry, dipole weights, recovery and voltages are simplified; the model does not solve cellular ion currents or a torso volume conductor. Color shows electrical state, not muscle contraction. The purple arrow shows the net electrical vector; its projection toward a lead's positive pole gives an upward deflection.</p><p>WPW shows one illustrative left free-wall pathway. Actual pathway locations and ECG patterns vary. Orthodromic AVRT is a steady re-entry loop; its P wave represents retrograde atrial activation. The normal reference uses the same cycle length for comparison, not a diagnosis.</p><div class="sim-source-links"><a href="https://www.ncbi.nlm.nih.gov/books/NBK354/" target="_blank" rel="noopener noreferrer">Clinical Methods: ECG</a><a href="https://www.jacc.org/doi/10.1016/j.jacc.2008.12.013" target="_blank" rel="noopener noreferrer">AHA / ACCF / HRS: conduction disturbances</a><a href="https://www.ncbi.nlm.nih.gov/books/NBK554437/" target="_blank" rel="noopener noreferrer">WPW & re-entry mechanisms</a></div></details>`;
   nav.after(root);
   // Bounded workspace: content changes by tabs/pages, never by document scroll.
-  root.dataset.page='simulation'; root.dataset.observe='heart';
+  root.dataset.page='simulation'; root.dataset.observe='together';
   root.querySelector('.sim-intro h1').textContent='Electrical simulator';
   const scenarioPicker=document.createElement('label'); scenarioPicker.className='sim-scenario-picker';
   scenarioPicker.innerHTML=`<span>Mechanism</span> <select id="sim-scenario-select" aria-label="Conduction mechanism">${api.scenarios.map(s=>`<option value="${s.id}">${s.label}</option>`).join('')}</select>`;
   root.querySelector('.sim-intro').append(scenarioPicker);
   const tabs=document.createElement('div'); tabs.className='sim-tabs';
-  tabs.innerHTML=`<div class="sim-page-tabs" role="tablist" aria-label="Simulator pages">${[['simulation','Simulation'],['quiz','Quiz'],['sources','Sources']].map(([id,label])=>`<button id="sim-tab-${id}" role="tab" data-sim-page-tab="${id}" aria-controls="sim-page-${id}" aria-selected="${id==='simulation'}" tabindex="${id==='simulation'?0:-1}">${label}</button>`).join('')}</div><div class="sim-mobile-views" role="group" aria-label="Simulation panel"><button data-observe="heart" aria-pressed="true">Heart</button><button data-observe="ecg" aria-pressed="false">ECG</button></div>`;
+  tabs.innerHTML=`<div class="sim-page-tabs" role="tablist" aria-label="Simulator pages">${[['simulation','Simulation'],['quiz','Quiz'],['sources','Sources']].map(([id,label])=>`<button id="sim-tab-${id}" role="tab" data-sim-page-tab="${id}" aria-controls="sim-page-${id}" aria-selected="${id==='simulation'}" tabindex="${id==='simulation'?0:-1}">${label}</button>`).join('')}</div><div class="sim-mobile-views" role="group" aria-label="Simulation panel"><button data-observe="together" aria-pressed="true">Together</button><button data-observe="heart" aria-pressed="false">Heart</button><button data-observe="ecg" aria-pressed="false">ECG</button></div>`;
   root.querySelector('.sim-intro').after(tabs);
   const content=document.createElement('div'); content.className='sim-content'; tabs.after(content);
   function page(element,id) {
@@ -108,12 +109,16 @@
   const sourcesPage=document.createElement('section'); sourcesPage.className='sim-detail-page';
   const sourceContent=[
     ['Model assumptions','This educational simulator uses one regional activation schedule for the electrical animation, vector, and schematic ECG. It is not a clinically validated ECG solver. Geometry, voltages, dipole weights and recovery are simplified; cellular ion currents and a torso volume conductor are not solved.'],
-    ['Reading the animation','The Anatomy view uses the Human Reference Atlas heart and matching vessels. Electrical color follows its named atrial, ventricular and septal meshes; vessels and valves stay uncolored. Timing within each chamber is a simplified interpolation, not a measured activation map. Use Electrical model or Map to inspect the conduction sequence. Color shows electrical state, not contraction. The purple vector in Electrical model projects onto each lead axis to produce the trace.'],
+    ['Reading the animation','See inside makes the atlas heart translucent. The overlaid SA/AV nodes, His bundle and Purkinje branches are schematic, not fibers segmented from this specimen. Fast conduction descends toward the apex, then recruits ventricular walls through a branching network. Muscle activation is a simplified regional field; vessels and valves remain uncolored. Heart, fibers and ECG share one clock.'],
     ['Pathway examples','WPW shows one illustrative left free-wall pathway; actual locations and ECG patterns vary. Orthodromic AVRT is a steady re-entry loop, so its P wave represents returning atrial activation. The normal reference uses the same cycle length for comparison.'],
+    ['ECG paper & playback','At the displayed 25 mm/s and 10 mm/mV calibration, each small square is 40 ms by 0.1 mV; each large square is 200 ms by 0.5 mV. Zoom fits the panel while keeping squares square. Neighboring repeats provide context; the gold cursor shares the heart’s beat. Slowing playback to 0.1× or 0.05× never changes paper calibration. Voltages remain schematic model output.'],
   ];
   const sourceCards=sourceContent.map(([title,copy])=>{const card=document.createElement('div');card.className='sim-source-card';card.innerHTML=`<h2>${title}</h2><p>${copy}</p>`;sourcesPage.append(card);return card;});
   const references=document.createElement('div');references.className='sim-source-card';references.innerHTML='<h2>Sources & credits</h2>';
   references.append(root.querySelector('.sim-source-links'));
+  const conductionSources=document.createElement('div');conductionSources.className='sim-source-links';
+  conductionSources.innerHTML='<a href="https://www.vhlab.umn.edu/atlas/conduction-system-tutorial/overview-of-cardiac-conduction.shtml" target="_blank" rel="noopener noreferrer">UMN · His–Purkinje anatomy</a><a href="https://pubmed.ncbi.nlm.nih.gov/1122581/" target="_blank" rel="noopener noreferrer">Human ventricular activation mapping</a><a href="https://ecg.utah.edu/pdf/Introduction-to-ECG-Interpretation-January-2023.pdf" target="_blank" rel="noopener noreferrer">University of Utah · standard ECG calibration</a>';
+  references.append(conductionSources);
   const anatomySources=document.createElement('div');anatomySources.className='sim-source-card';
   anatomySources.innerHTML='<h2>Anatomy references</h2><p>Geometry: Human Reference Atlas, Visible Human Male. Heart, vessels and torso retain their shared anatomical coordinates. Vessel colors distinguish circulation routes; they are not tissue colors. Cropped vessel ends represent the edge of the model.</p><div class="sim-source-links"><a href="https://humanatlas.io/3d-reference-library" target="_blank" rel="noopener noreferrer">Human Reference Atlas · CC BY 4.0</a><a href="https://openstax.org/books/anatomy-and-physiology-2e/pages/19-1-heart-anatomy" target="_blank" rel="noopener noreferrer">OpenStax · heart anatomy, figures 19.2 and 19.6</a><a href="https://www.youtube.com/watch?v=RNjJlewslbI" target="_blank" rel="noopener noreferrer">West Coast University · external heart anatomy</a></div>';
   const credit=root.querySelector('.sim-heart-credit').cloneNode(true);credit.className='sim-source-credit';references.append(credit);
@@ -129,7 +134,7 @@
     return next=>{index=Math.max(0,Math.min(cards.length-1,next));show();};
   }
   const showContext=paginate(contextBox,[nowCard,mechanismCard,ecgCard],['At this instant','Mechanism','ECG effect'],true);
-  paginate(sourcesPage,sourceCards,['Assumptions','Animation','Pathways','Sources','Anatomy']);
+  paginate(sourcesPage,sourceCards,['Assumptions','Animation','Pathways','Calibration','Sources','Anatomy']);
   function showPage(id) {
     if(quizBlind()&&id==='sources')return;
     if(!quiz&&id==='quiz'&&root.dataset.page!=='quiz')priorStudyPage=root.dataset.page;
@@ -147,7 +152,7 @@
   $('sim-events').innerHTML='<button id="sim-prev-event" aria-label="Previous electrical event">‹</button><label for="sim-event-select">Event</label><select id="sim-event-select" aria-label="Electrical event"></select><button id="sim-next-event" aria-label="Next electrical event">›</button>';
   $('sim-phase-title').before($('sim-events'));
   let currentEvents=[];
-  const state = {scenario:'normal', time:0, playing:!matchMedia('(prefers-reduced-motion: reduce)').matches, speed:.25, lead:'II', compare:true, inspectedEvent:null};
+  const state = {scenario:'normal', time:0, playing:!matchMedia('(prefers-reduced-motion: reduce)').matches, speed:.1, lead:'II', compare:true, inspectedEvent:null,traceCycle:0};
   let model, normal, params, lastFrame = 0, phaseId = '', traceCache = [];
   const choices = {
     normal:['Normal sinus','The usual route'], rbbb:['Right bundle block','Late right ventricle'],
@@ -182,7 +187,7 @@
     $('sim-quiz-open').textContent=quiz.complete?'View score →':quiz.answered?'View result →':'Choose answer →';
   }
   function startQuiz() {
-    if(!quiz)studySnapshot={state:{...state},params:{...params},page:priorStudyPage,contextPage:Number(contextBox.dataset.explanationPage),parameter:parameterChoice.value,view:stage.dataset.view,observe:root.dataset.observe,camera:simCamera?.position.clone(),target:orbit?.target.clone()};
+    if(!quiz)studySnapshot={state:{...state},params:{...params},page:priorStudyPage,contextPage:Number(contextBox.dataset.explanationPage),parameter:parameterChoice.value,view:stage.dataset.view,observe:root.dataset.observe,transparent:$('sim-transparent').checked,fibers:$('sim-fibers').checked,traces:root.querySelector('.sim-traces').dataset.traces,camera:simCamera?.position.clone(),target:orbit?.target.clone()};
     quiz=window.EPSimQuiz.createSession(scenarios.map(s=>s.id));loadQuizCase();
   }
   function loadQuizCase() {
@@ -196,6 +201,8 @@
     setScenario(saved.state.scenario);params={...saved.params};rebuild();Object.assign(state,saved.state);
     parameterChoice.value=saved.parameter;syncParameterChoice();
     $('sim-lead').value=state.lead;$('sim-speed').value=state.speed;$('sim-compare').checked=state.compare;
+    $('sim-transparent').checked=saved.transparent;$('sim-fibers').checked=saved.fibers;syncAnatomyDisplay();
+    root.querySelector('.sim-traces').dataset.traces=saved.traces;$('sim-trace-layout').setAttribute('aria-pressed',String(saved.traces==='compare'));$('sim-trace-layout').textContent=saved.traces==='compare'?'One lead':'Compare 3';
     root.dataset.observe=saved.observe;tabs.querySelectorAll('[data-observe]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.observe===saved.observe)));
     setView(saved.view);if(simCamera&&saved.camera){simCamera.position.copy(saved.camera);orbit.target.copy(saved.target);orbit.update();}
     syncQuizUI();syncLead();phaseId='';update();syncPlayback();showContext(saved.contextPage);showPage(saved.page);$(`sim-tab-${saved.page}`).focus();
@@ -221,11 +228,12 @@
     else loadQuizCase();
   });
   const shellColors = {rest:new THREE.Color('#384d70'), active:new THREE.Color('#f4c76c'), depolarized:new THREE.Color('#88769c'), recovery:new THREE.Color('#60d3c2')};
-  let simRenderer, simScene, simCamera, orbit, heartGroup, anatomyGroup, pathwayGroup, vectorArrow, leadArrow;
+  let simRenderer, simScene, simCamera, orbit, heartGroup, anatomyGroup, pathwayGroup, anatomyPathGroup, vectorArrow, leadArrow, anatomicalView;
   const anatomyFields=[];
+  const anatomyMaterials=[], anatomyRoutes=[], anatomyNodes=[];
   const anatomyUniforms={activationTime:{value:0},activationCycle:{value:800},activationStrength:{value:1}};
   let anatomyLoading=false;
-  const tissue = [], labels = [], pathways = [], mapPaths = [], mapChambers = [];
+  const tissue = [], labels = [], pathways = [], mapPaths = [], mapCells = [];
   const chamberDefs = [
     {id:'RA', center:[-.48,.57,0], radius:[.43,.38,.31]},
     {id:'LA', center:[.45,.65,-.12], radius:[.4,.34,.31]},
@@ -262,6 +270,7 @@
       }
       simScene.add(new THREE.HemisphereLight(0xc4d6fa,0x352333,.45));
       anatomyGroup=new THREE.Group(); simScene.add(anatomyGroup);
+      anatomyPathGroup=new THREE.Group(); anatomyGroup.add(anatomyPathGroup);
       heartGroup = new THREE.Group(); simScene.add(heartGroup);
       heartGroup.visible=false;
       for(const ch of chamberDefs) {
@@ -317,6 +326,65 @@
   root.querySelectorAll('[data-sim-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.simView)));
   $('sim-reset-view').addEventListener('click',resetView);
   $('sim-overlay').addEventListener('change',e=>anatomyUniforms.activationStrength.value=e.target.checked?1:0);
+  function syncAnatomyDisplay() {
+    const transparent=$('sim-transparent').checked, fibers=transparent&&$('sim-fibers').checked;
+    stage.dataset.seeInside=String(transparent);
+    $('sim-fibers').disabled=!transparent;
+    if(anatomyPathGroup)anatomyPathGroup.visible=fibers;
+    for(const {material,chamber,name} of anatomyMaterials){
+      material.transparent=transparent;
+      material.opacity=transparent?(chamber?.23:name.includes('valve')?.13:.40):1;
+      material.depthWrite=!transparent; material.needsUpdate=true;
+    }
+    anatomyNodes.forEach(l=>l.el.hidden=!fibers);
+  }
+  $('sim-transparent').addEventListener('change',syncAnatomyDisplay);
+  $('sim-fibers').addEventListener('change',syncAnatomyDisplay);
+  function clearGroup(group) {
+    while(group.children.length){const child=group.children[0];group.remove(child);child.geometry?.dispose();child.material?.dispose();}
+  }
+  function rebuildAnatomyPaths() {
+    if(!anatomicalView||!model||!window.ConductionAnatomy)return;
+    clearGroup(anatomyPathGroup);anatomyRoutes.length=0;
+    for(const label of anatomyNodes){label.el.remove();labels.splice(labels.indexOf(label),1);}anatomyNodes.length=0;
+    const network=window.ConductionAnatomy.create(THREE,anatomicalView,model.paths);
+    const mappedTimes=new Map();
+    for(const route of network.paths.filter(p=>p.kind==='purkinje')){
+      const primary=model.regions.find(r=>r.id===route.chamber.toLowerCase());
+      const end=Math.max(...model.regions.filter(r=>r.chamber===route.chamber&&r.id!=='preexcitation').map(r=>r.end));
+      const side=route.chamber==='LV'?1:-1;
+      const times=route.chamberPoints.map(([x,y,z])=>primary.onset+(.70*(y+1)/2+.25*(side*x+1)/2+.05*(z+1)/2)*(end-primary.onset));
+      mappedTimes.set(route.id,times);
+    }
+    for(const route of network.paths){
+      const source=model.paths.find(p=>p.id===route.id);if(!source||source.kind==='myocardial-field'||route.points.length<2)continue;
+      const path={...source};
+      if(mappedTimes.has(path.id)){path.pointTimes=mappedTimes.get(path.id);path.start=path.pointTimes[0];path.end=path.pointTimes.at(-1);}
+      if(path.id==='right-bundle'||path.id==='left-bundle')path.end=mappedTimes.get(`purkinje-${path.chamber.toLowerCase()}-1`)[0];
+      const curve=new THREE.CatmullRomCurve3(route.points,false,'centripetal');
+      const material=new THREE.MeshBasicMaterial({color:path.blocked?0x926575:path.accessory?0xe69aaa:0xbdc8e8});
+      const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,56,path.kind==='purkinje'?.007:.012,6,false),material);
+      anatomyPathGroup.add(mesh);
+      const dots=[];
+      // A short illuminated segment makes propagation legible without a large bead.
+      for(let i=0;i<5;i++){
+        const dot=new THREE.Mesh(new THREE.SphereGeometry(path.kind==='purkinje'?.012:.018,8,6),new THREE.MeshBasicMaterial({color:path.accessory?0xf8adbb:0xffd46c}));
+        anatomyPathGroup.add(dot);dots.push(dot);
+      }
+      anatomyRoutes.push({path,curve,dots,material});
+      if(path.blocked&&path.kind!=='purkinje'){
+        const point=curve.getPoint(.3), d=.033;
+        const cross=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([point.clone().add(v3([-d,-d,0])),point.clone().add(v3([d,d,0])),point.clone().add(v3([-d,d,0])),point.clone().add(v3([d,-d,0]))]),new THREE.LineBasicMaterial({color:0xe0909e}));
+        anatomyPathGroup.add(cross);
+      }
+    }
+    for(const node of network.nodes){
+      const position=node.position;
+      const mesh=new THREE.Mesh(new THREE.SphereGeometry(.022,12,10),new THREE.MeshBasicMaterial({color:0xf6d089}));mesh.position.copy(position);anatomyPathGroup.add(mesh);
+      if(['sa','av','his'].includes(node.id))anatomyNodes.push(createLabel(node.label,position.clone().add(v3([node.id==='sa'?-.12:.10,.02,.03])).toArray(),'anatomy-node'));
+    }
+    syncAnatomyDisplay();
+  }
   function refreshAnatomyTiming() {
     if(!model)return;
     for(const field of anatomyFields) {
@@ -334,7 +402,7 @@
     const status=$('sim-anatomy-status'); status.hidden=false; status.textContent='Loading reference heart…';
     stage.dataset.anatomyState='loading';
     new THREE.GLTFLoader().load('assets/heart.glb?v=hra-v1',gltf=>{
-      const anatomicalView=HeartAnatomy.prepare(THREE,gltf.scene,2.3);
+      anatomicalView=HeartAnatomy.prepare(THREE,gltf.scene,2.3);
       anatomicalView.entries.forEach(entry=>{
         const {geometry,name,chamber}=entry;
         const positions=geometry.attributes.position,zones=[];
@@ -347,6 +415,7 @@
           anatomyFields.push({geometry,zones});
         }
         const material=HeartAnatomy.material(THREE,name);
+        anatomyMaterials.push({material,chamber,name});
         if(chamber) material.onBeforeCompile=shader=>{
 
           Object.assign(shader.uniforms,anatomyUniforms);
@@ -363,9 +432,9 @@
             vec3 electricalGlow = vec3(1.0, 0.52, 0.075) * front * 0.32 + vec3(0.04, 0.55, 0.4) * recovery * 0.14 + vec3(0.2, 0.08, 0.25) * plateau * 0.035;
             totalEmissiveRadiance += electricalGlow * vActivationSchedule.w * activationStrength;`);
         };
-        const mesh=new THREE.Mesh(geometry,material); mesh.name=name; mesh.userData.chamber=chamber; anatomyGroup.add(mesh);
+        const mesh=new THREE.Mesh(geometry,material); mesh.name=name; mesh.userData.chamber=chamber; mesh.renderOrder=chamber?2:3; anatomyGroup.add(mesh);
       });
-      anatomyLoading=false; status.hidden=true; stage.dataset.anatomyState='ready'; refreshAnatomyTiming();
+      anatomyLoading=false; status.hidden=true; stage.dataset.anatomyState='ready'; refreshAnatomyTiming();rebuildAnatomyPaths();syncAnatomyDisplay();
     },undefined,()=>{
       anatomyLoading=false; stage.dataset.anatomyState='error';
       status.innerHTML='Reference heart could not load. <button type="button">Retry</button>';
@@ -384,13 +453,13 @@
         const child=pathwayGroup.children[0]; pathwayGroup.remove(child); child.geometry?.dispose(); child.material?.dispose();
       }
       pathways.length=0;
-      for(const path of model.paths) {
+      for(const path of model.paths.filter(p=>p.kind!=='myocardial-field')) {
         const pts=path.points.map(v3); const curve=new THREE.CatmullRomCurve3(pts);
         const mat=new THREE.MeshBasicMaterial({color:pathColor(path),transparent:true,opacity:path.blocked?.23:.46,depthTest:false});
         const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,36,.009,5,false),mat); mesh.renderOrder=5; pathwayGroup.add(mesh);
         const dot=new THREE.Mesh(new THREE.SphereGeometry(.026,10,8),new THREE.MeshBasicMaterial({color:path.accessory?0xed98ab:0xffd784,depthTest:false})); dot.renderOrder=6; pathwayGroup.add(dot);
         pathways.push({path,curve,dot,mat});
-        if(path.blocked) {
+        if(path.blocked&&path.kind!=='purkinje') {
           const p=curve.getPoint(.4); const crossG=new THREE.BufferGeometry().setFromPoints([p.clone().add(v3([-.05,-.05,.025])),p.clone().add(v3([.05,.05,.025])),p.clone().add(v3([-.05,.05,.025])),p.clone().add(v3([.05,-.05,.025]))]);
           const cross=new THREE.LineSegments(crossG,new THREE.LineBasicMaterial({color:0xf59dac,depthTest:false})); cross.renderOrder=7; pathwayGroup.add(cross);
         }
@@ -399,6 +468,7 @@
     }
     buildMap();
     refreshAnatomyTiming();
+    rebuildAnatomyPaths();
   }
   function buildMap() {
     // Curves use the same control points and parameter as the 3D pathways.
@@ -410,8 +480,8 @@
       LV:'M 13 -15 C 35 -10 61 -12 80 -17 C 98 9 86 57 60 90 C 52 103 44 112 35 115 C 17 100 5 79 5 52 C 4 27 -1 2 13 -15 Z'
     };
     const outline='M -68 -100 C -102 -103 -115 -60 -106 -27 C -102 29 -73 82 -20 104 L 34 125 C 70 107 98 65 104 24 C 113 -21 97 -83 76 -94 C 49 -111 22 -91 3 -70 C -18 -87 -41 -103 -68 -100 Z';
-    mapPaths.length=0; mapChambers.length=0;
-    const routes=model.paths.map((path,i)=>{
+    mapPaths.length=0; mapCells.length=0;
+    const routes=model.paths.filter(p=>p.kind!=='myocardial-field').map((path,i)=>{
       const curve=new THREE.CatmullRomCurve3(path.points.map(v3));
       const points=curve.getPoints(80); const distances=[0];
       for(let j=1;j<points.length;j++)distances.push(distances[j-1]+Math.hypot(points[j].x-points[j-1].x,points[j].y-points[j-1].y)*100);
@@ -422,7 +492,7 @@
         <path class="sim-map-track-shadow" d="${d}"/><path id="sim-map-path-${i}" class="sim-map-track" d="${d}"/>
         <path id="sim-map-trail-${i}" class="sim-map-trail" d="${d}"/>
         <g id="sim-map-dot-${i}" class="sim-map-impulse"><circle r="6" class="sim-map-glow"/><circle r="2.1"/><circle r=".85" fill="#fff9df"/></g>
-        ${path.blocked?`<g class="sim-map-block" transform="translate(${block.x*100} ${-block.y*100})"><circle r="5.6"/><path d="M -2 -2 L 2 2 M 2 -2 L -2 2"/></g>`:''}
+        ${path.blocked&&path.kind!=='purkinje'?`<g class="sim-map-block" transform="translate(${block.x*100} ${-block.y*100})"><circle r="5.6"/><path d="M -2 -2 L 2 2 M 2 -2 L -2 2"/></g>`:''}
       </g>`;
     }).join('');
     const anomaly=quizBlind()?null:({rbbb:['RBB blocked',-48,12],lbbb:['LBB blocked',49,12],wpw:['Accessory ↓',106,-58],avrt:['Return ↑',108,-58]}[state.scenario]);
@@ -432,14 +502,11 @@
         <linearGradient id="sim-map-right" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#284a60"/><stop offset="1" stop-color="#1c2c42"/></linearGradient>
         <linearGradient id="sim-map-left" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#45435b"/><stop offset="1" stop-color="#252c43"/></linearGradient>
         <filter id="sim-map-bloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="2.5"/></filter>
+        ${Object.entries(contours).map(([id,d])=>`<clipPath id="sim-map-clip-${id}"><path d="${d}"/></clipPath>`).join('')}
       </defs>
       <path class="sim-map-silhouette" d="${outline}"/>
-      <g class="sim-map-chambers">${Object.entries(contours).map(([id,d])=>`<path class="sim-map-chamber" d="${d}" fill="url(#sim-map-${id.startsWith('R')?'right':'left'})"/><path id="sim-map-field-${id}" d="${d}" opacity="0"/>`).join('')}</g>
+      <g class="sim-map-chambers">${Object.entries(contours).map(([id,d])=>`<path id="sim-map-chamber-${id}" class="sim-map-chamber" d="${d}" fill="url(#sim-map-${id.startsWith('R')?'right':'left'})"/><g id="sim-map-field-${id}" clip-path="url(#sim-map-clip-${id})"/>`).join('')}</g>
       <g class="sim-map-valves"><path d="M -80 -12 Q -50 -7 -23 -18 M 19 -19 Q 40 -9 75 -21"/><path d="M -66 -11 L -50 2 L -30 -14 M 29 -16 L 47 -2 L 65 -17"/></g>
-      <g class="sim-map-arbor">
-        <path d="M -48 54 Q -64 43 -70 18 M -48 54 Q -49 70 -22 80 M -48 54 Q -69 50 -70 30 M -48 54 Q -30 70 -18 52"/>
-        <path d="M 45 67 Q 70 53 75 14 M 45 67 Q 61 77 38 100 M 45 67 Q 29 79 20 51 M 45 67 Q 70 70 79 40"/>
-      </g>
       <g class="sim-map-routes">${routes}</g>
       <g class="sim-map-nodes"><circle cx="-69" cy="-82" r="3.1"/><circle cx="-7" cy="-18" r="3.6"/><circle cx="0" cy="-1" r="2.3"/></g>
       <g class="sim-map-node-labels">
@@ -450,7 +517,21 @@
       <g class="sim-map-orientation"><text x="-84" y="138">PATIENT RIGHT</text><text x="63" y="138">PATIENT LEFT</text></g>
       ${anomaly?`<text class="sim-map-anomaly" x="${anomaly[1]}" y="${anomaly[2]}" text-anchor="middle">${anomaly[0]}</text>`:''}`;
     mapPaths.forEach((item,i)=>Object.assign(item,{dot:$(`sim-map-dot-${i}`),trail:$(`sim-map-trail-${i}`)}));
-    Object.keys(contours).forEach(id=>mapChambers.push({el:$(`sim-map-field-${id}`),regions:model.regions.filter(r=>r.chamber===id)}));
+    // A clipped tissue field makes cell-to-cell spread spatial, rather than a
+    // single impulse traveling through an invented cross-ventricular cable.
+    for(const id of Object.keys(contours)){
+      // Control-point bounds remain valid while this SVG is hidden in Anatomy.
+      // Some browsers return an empty getBBox() for a hidden SVG.
+      const coords=contours[id].match(/-?\d+(?:\.\d+)?/g).map(Number);
+      const xs=coords.filter((_,i)=>i%2===0),ys=coords.filter((_,i)=>i%2===1);
+      const box={x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)},field=$(`sim-map-field-${id}`);
+      const cols=12,rows=18,dx=box.width/cols,dy=box.height/rows;
+      for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+        const cell=document.createElementNS('http://www.w3.org/2000/svg','rect');
+        cell.setAttribute('x',box.x+x*dx);cell.setAttribute('y',box.y+y*dy);cell.setAttribute('width',dx+.15);cell.setAttribute('height',dy+.15);
+        field.append(cell);mapCells.push({el:cell,arrival:model.activation(id,(x+.5)/cols*2-1,1-(y+.5)/rows*2,0)});
+      }
+    }
   }
   function leadDirection() {
     return v3(api.leadAxes[state.lead]).normalize();
@@ -462,7 +543,7 @@
     buildTraceCache();
   }
   function setScenario(id) {
-    state.scenario=id; const sc=scenarios.find(s=>s.id===id); params={...sc.defaults,scenario:id}; state.time=0; state.inspectedEvent=null;
+    state.scenario=id; const sc=scenarios.find(s=>s.id===id); params={...sc.defaults,scenario:id}; state.time=0; state.inspectedEvent=null;state.traceCycle=0;
     $('sim-scenario-select').value=id;
     root.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scenario===id)));
     $('sim-rate').min=id==='avrt'?150:50; $('sim-rate').max=id==='avrt'?200:120;
@@ -507,6 +588,13 @@
   for(const [control,param] of [['rate','bpm'],['av','avDelay'],['branch','branchDelay'],['accessory','accessory']]) $( `sim-${control}`).addEventListener('input',e=>{params[param]=Number(e.target.value);rebuild();});
   const tempColor=new THREE.Color();
   function periodicAge(t,onset) { return ((t-onset)%model.cycleMs+model.cycleMs)%model.cycleMs; }
+  function pathProgress(path,time) {
+    if(time<path.start||time>path.end)return -1;
+    if(!path.pointTimes)return (time-path.start)/(path.end-path.start);
+    const times=path.pointTimes;
+    for(let i=0;i<times.length-1;i++)if(time<=times[i+1])return (i+(time-times[i])/Math.max(.001,times[i+1]-times[i]))/(times.length-1);
+    return 1;
+  }
   function update() {
     if(!model) return;
     anatomyUniforms.activationTime.value=state.time;
@@ -534,16 +622,23 @@
         colors.needsUpdate=true;
       }
       for(const item of pathways) {
-        const progress=(state.time-item.path.start)/(item.path.end-item.path.start);
+        const progress=pathProgress(item.path,state.time);
         item.dot.visible=!item.path.blocked&&progress>=0&&progress<=1;
         if(item.dot.visible)item.dot.position.copy(item.curve.getPoint(Math.min(1,Math.max(0,progress))));
         item.mat.opacity=item.dot.visible?.85:item.path.blocked?.2:.4;
+      }
+      for(const item of anatomyRoutes){
+        item.dots.forEach((dot,index)=>{
+          const progress=pathProgress(item.path,state.time-index*1.3);
+          dot.visible=!item.path.blocked&&progress>=0&&progress<=1;
+          if(dot.visible)dot.position.copy(item.curve.getPoint(progress));
+        });
       }
       const vector=v3(model.vector(state.time)); const magnitude=vector.length(); vectorArrow.visible=magnitude>.025;
       if(vectorArrow.visible){vectorArrow.setDirection(vector.normalize());vectorArrow.setLength(Math.min(.95,magnitude*.7),.10,.045);}
     }
     for(const {path,curve,distances,dot,trail} of mapPaths) {
-      const progress=(state.time-path.start)/(path.end-path.start);
+      const progress=pathProgress(path,state.time);
       const active=!path.blocked&&progress>=0&&progress<=1;
       dot.style.display=trail.style.display=active?'':'none';
       if(!active)continue;
@@ -553,16 +648,11 @@
       trail.setAttribute('stroke-dasharray',`${tail} ${distances[distances.length-1]+1}`);
       trail.setAttribute('stroke-dashoffset',-(head-tail));
     }
-    for(const {el,regions} of mapChambers) {
-      let activation=0,recovery=0,plateau=0;
-      for(const region of regions) {
-        const age=periodicAge(state.time,region.onset), recoverAge=periodicAge(state.time,region.recoveryStart);
-        if(age<region.duration)activation=Math.max(activation,Math.sin(Math.PI*age/region.duration));
-        else if(age<region.recoveryStart-region.onset)plateau=.12;
-        if(recoverAge<region.recoveryEnd-region.recoveryStart)recovery=Math.max(recovery,Math.sin(Math.PI*recoverAge/(region.recoveryEnd-region.recoveryStart)));
-      }
-      el.setAttribute('fill',recovery>.1?'#60d3c2':activation>.1?'#f4c76c':'#88769c');
-      el.setAttribute('opacity',Math.max(activation*.25,recovery*.2,plateau));
+    for(const {el,arrival:a} of mapCells) {
+      const age=periodicAge(state.time,a.onset),recovery=periodicAge(state.time,a.recovery);
+      const depolarized=age<periodicAge(a.recovery,a.onset),recovering=recovery<(a.recoveryDuration||48),active=age<20;
+      el.setAttribute('fill',recovering?'#60d3c2':active?'#f4c76c':'#88769c');
+      el.setAttribute('opacity',recovering?.3:active?.42:depolarized?.14:0);
     }
   }
   function buildTraceCache() {
@@ -573,32 +663,73 @@
       return {current,reference};
     });
   }
+  const paperLayouts=[];
   function drawTraces() {
     if(!model||!traceCache.length)return;
+    const visible=canvases.map((canvas,idx)=>({canvas,idx})).filter(({canvas})=>canvas.clientWidth&&canvas.clientHeight);
+    const shown=visible.flatMap(({idx})=>[...traceCache[idx].current,...(state.compare?traceCache[idx].reference:[])]);
+    const minValue=Math.min(-.35,...shown)-.12,maxValue=Math.max(.55,...shown)+.12;
+    // Compare leads on identical time and voltage axes, including fractional
+    // CSS row heights. A cursor must line up vertically across all three strips.
+    const paperWidth=Math.min(...visible.map(({canvas})=>canvas.clientWidth));
+    const paperHeight=Math.min(...visible.map(({canvas})=>canvas.clientHeight));
     canvases.forEach((canvas,idx)=>{
       const ctx=canvas.getContext('2d'), w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
       const dpr=Math.min(devicePixelRatio,2);
       if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
       ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);ctx.fillStyle='#fffdfd';ctx.fillRect(0,0,w,h);
-      const left=16,right=w-12, span=right-left, zero=h*.55, scale=h*.28;
-      const toX=t=>left+t/model.cycleMs*span;
-      for(let t=0;t<=model.cycleMs;t+=20){ctx.strokeStyle=t%100===0?'#ecd9df':'#f5e9ec';ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(toX(t),0);ctx.lineTo(toX(t),h);ctx.stroke();}
-      for(let y=zero%7;y<h;y+=7){ctx.strokeStyle='#f3e7eb';ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-      if(!quizBlind()){ctx.fillStyle='#f2cd7220';ctx.fillRect(toX(model.prMs),0,model.qrsMs/model.cycleMs*span,h);}
-      function line(values,color,width,dash=[]) {
+      const values=traceCache[idx];
+      const paper=window.ECGPaper.layout({width:paperWidth,height:paperHeight,cycleMs:model.cycleMs,minValue,maxValue});
+      paperLayouts[idx]=paper;
+      if(!paper.smallPx)return;
+      const {left,rightEdge,toX,toY}=paper;
+      const cycleIndex=Math.min(state.traceCycle,Math.max(0,Math.floor((paper.durationMs-state.time)/model.cycleMs)));
+      const cycleOffset=cycleIndex*model.cycleMs;
+      // True square calibration. Playback rate changes the cursor, never paper scale.
+      for(let t=0;t<=paper.durationMs;t+=paper.smallMs){
+        ctx.strokeStyle=t%paper.largeMs===0?'#dfbfc9':'#f0dfe4';ctx.lineWidth=t%paper.largeMs===0?.8:.45;
+        ctx.beginPath();ctx.moveTo(toX(t),0);ctx.lineTo(toX(t),h);ctx.stroke();
+      }
+      const low=Math.floor((paper.zeroY-h)/paper.smallPx),high=Math.ceil(paper.zeroY/paper.smallPx);
+      for(let n=low;n<=high;n++){
+        const y=toY(n*paper.smallMv);ctx.strokeStyle=n%5===0?'#dfbfc9':'#f0dfe4';ctx.lineWidth=n%5===0?.8:.45;
+        ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+      }
+      // One emphasized beat shares the 3D clock; neighboring beats give paper context.
+      ctx.fillStyle='#f5c96110';ctx.fillRect(toX(cycleOffset),0,paper.pxPerMs*model.cycleMs,h);
+      if(!quizBlind()){ctx.fillStyle='#efc36318';ctx.fillRect(toX(cycleOffset+model.prMs),0,paper.pxPerMs*model.qrsMs,h);}
+      ctx.save();ctx.beginPath();ctx.rect(left,paper.top,paper.plotWidth,paper.plotHeight);ctx.clip();
+      function line(samples,color,width,dash=[]) {
         ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);ctx.beginPath();
-        for(let x=0;x<=span;x++){const t=x/span*model.cycleMs;const ix=Math.min(values.length-1,Math.floor(t));const y=zero-values[ix]*scale;if(x===0)ctx.moveTo(left+x,y);else ctx.lineTo(left+x,y);}
+        for(let x=left;x<=rightEdge;x++){
+          const time=((paper.timeAtX(x)%model.cycleMs)+model.cycleMs)%model.cycleMs;
+          const i=Math.min(samples.length-2,Math.floor(time)),value=samples[i]+(samples[i+1]-samples[i])*(time-i);
+          if(x===left)ctx.moveTo(x,toY(value));else ctx.lineTo(x,toY(value));
+        }
         ctx.stroke();ctx.setLineDash([]);
       }
-      if(state.compare&&state.scenario!=='normal')line(traceCache[idx].reference,'#aab5c9',1,[3,3]);
-      line(traceCache[idx].current,'#3f527e',1.65);
-      const cursor=toX(state.time);ctx.strokeStyle='#cc9c39';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cursor,0);ctx.lineTo(cursor,h);ctx.stroke();
-      const value=model.sample([state.lead,'V1','V6'][idx],state.time);ctx.fillStyle='#c99530';ctx.beginPath();ctx.arc(cursor,zero-value*scale,3.1,0,2*Math.PI);ctx.fill();
-      ctx.fillStyle='#939bac';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='right';ctx.fillText(`${Math.round(model.cycleMs)} ms`,w-8,h-5);
-      if(idx===0&&!quizBlind()){ctx.textAlign='left';ctx.fillText('QRS',Math.min(w-30,toX(model.prMs)+3),h-5);}
+      if(state.compare&&state.scenario!=='normal')line(values.reference,'#8c9db9',1,[3,3]);
+      line(values.current,'#334d73',1.65);
+      ctx.restore();
+      // Dim context cycles without altering their calibration or waveform.
+      ctx.fillStyle='#fffdfd6e';ctx.fillRect(left,0,toX(cycleOffset)-left,h);ctx.fillRect(toX(cycleOffset+model.cycleMs),0,Math.max(0,rightEdge-toX(cycleOffset+model.cycleMs)),h);
+      const cursor=toX(cycleOffset+state.time);ctx.strokeStyle='#ba8a24';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(cursor,0);ctx.lineTo(cursor,h);ctx.stroke();
+      const value=model.sample([state.lead,'V1','V6'][idx],state.time);ctx.fillStyle='#c99530';ctx.beginPath();ctx.arc(cursor,toY(value),3.2,0,2*Math.PI);ctx.fill();
+      ctx.fillStyle='#69788d';ctx.font='9px -apple-system,sans-serif';ctx.textAlign='right';ctx.fillText(`${(paper.durationMs/1000).toFixed(2)} s`,w-8,h-5);
+      ctx.textAlign='left';
+      // The bracket remains 200 ms even when heart rate or viewport changes.
+      if(toX(200)<w-45){ctx.strokeStyle='#7c899b';ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(left,h-15);ctx.lineTo(toX(200),h-15);ctx.stroke();ctx.fillText('200 ms',left+5,h-4);}
     });
   }
-  canvases.forEach(canvas=>canvas.addEventListener('pointerdown',e=>{const rect=canvas.getBoundingClientRect();seek((e.clientX-rect.left-16)/(rect.width-28)*model.cycleMs);}));
+  canvases.forEach((canvas,index)=>canvas.addEventListener('pointerdown',e=>{
+    const rect=canvas.getBoundingClientRect(),paper=paperLayouts[index];if(!paper)return;
+    const time=Math.max(0,Math.min(paper.durationMs-.001,paper.timeAtX(e.clientX-rect.left)));state.traceCycle=Math.floor(time/model.cycleMs);seek(time%model.cycleMs);
+  }));
+  $('sim-trace-layout').addEventListener('click',()=>{
+    const traces=root.querySelector('.sim-traces'),compare=traces.dataset.traces!=='compare';
+    traces.dataset.traces=compare?'compare':'single';$('sim-trace-layout').setAttribute('aria-pressed',String(compare));
+    $('sim-trace-layout').textContent=compare?'One lead':'Compare 3';resize();
+  });
   function resize() {
     if(simRenderer){const w=$('sim-viewport').clientWidth,h=$('sim-viewport').clientHeight;if(w&&h){simRenderer.setSize(w,h,false);simCamera.aspect=w/h;simCamera.updateProjectionMatrix();}}
     drawTraces();
@@ -626,7 +757,7 @@
       update();drawTraces();
       if(simRenderer&&stage.dataset.view!=='map'){
         orbit.update();simRenderer.render(simScene,simCamera);
-        for(const l of labels){const p=l.position.clone().project(simCamera);l.el.style.left=`${(p.x+1)*.5*stage.clientWidth}px`;l.el.style.top=`${Math.min(l===selectedLeadLabel?stage.clientHeight-95:stage.clientHeight,(1-p.y)*.5*stage.clientHeight)}px`;l.el.hidden=p.z>1||(l===mechanismLabel&&!l.el.textContent);}
+        for(const l of labels){const p=l.position.clone().project(simCamera);l.el.style.left=`${(p.x+1)*.5*stage.clientWidth}px`;l.el.style.top=`${Math.min(l===selectedLeadLabel?stage.clientHeight-95:stage.clientHeight,(1-p.y)*.5*stage.clientHeight)}px`;l.el.hidden=p.z>1||(l===mechanismLabel&&!l.el.textContent)||(l.el.classList.contains('anatomy-node')&&!anatomyPathGroup.visible);}
       }
     }
     requestAnimationFrame(frame);

@@ -66,6 +66,52 @@ assert(lbbb.sample('V1', lbbb.qrsStart + 65) < -0.7);
 assert(lbbb.sample('V6', lbbb.qrsStart + 65) > 0.7);
 assert(lbbb.activation('LV', 1, 0, 0).onset > lbbb.activation('LV', -1, 0, 0).onset, 'LBBB spreads septal→lateral');
 
+// BBB spread is a myocardial field, not an invented cross-chamber tract.
+for (const [model, chamber] of [[rbbb, 'RV'], [lbbb, 'LV']]) {
+  const field = model.paths.find(p => p.id === 'myocardial-spread');
+  assert.equal(field.kind, 'myocardial-field');
+  assert.equal(field.chamber, chamber);
+  assert.equal(field.origin, 'septum');
+  assert.equal(field.direction, 'septal-to-free-wall');
+  assert.deepEqual(field.points, [], 'A tissue field must not render a line or moving bead');
+  assert.equal(field.start, region(model, chamber.toLowerCase()).onset);
+  assert.equal(field.end, model.qrsEnd);
+}
+assert(!normal.paths.some(p => p.kind === 'myocardial-field'));
+
+function checkPurkinjeNetwork(model) {
+  const fans = model.paths.filter(p => p.kind === 'purkinje');
+  assert.equal(fans.length, 6, 'Three parallel Purkinje fans per chamber');
+  for (const chamber of ['RV', 'LV']) {
+    const branch = model.paths.find(p => p.id === (chamber === 'RV' ? 'right-bundle' : 'left-bundle'));
+    const chamberFans = fans.filter(p => p.chamber === chamber);
+    assert.equal(chamberFans.length, 3);
+    const lastTissueActivation = Math.max(...model.regions.filter(r => r.chamber === chamber && r.id !== 'preexcitation').map(r => r.end));
+    for (const fan of chamberFans) {
+      assert.equal(fan.blocked, branch.blocked, 'Blocked bundle cannot emit a fast antegrade fan pulse');
+      near(fan.start, branch.end, 1e-9);
+      assert.deepEqual(fan.points[0], branch.points[branch.points.length - 1], 'Bundle joins fan without a spatial jump');
+      assert.equal(fan.points.length, fan.chamberPoints.length);
+      assert.equal(fan.points.length, fan.pointTimes.length);
+      near(fan.start, fan.pointTimes[0]);
+      near(fan.end, fan.pointTimes[fan.pointTimes.length - 1]);
+      assert(fan.end <= lastTissueActivation, 'Network pulse ends before chamber recruitment ends');
+      fan.chamberPoints.forEach((point, index) => {
+        assert(point.every(v => Number.isFinite(v) && Math.abs(v) <= 1), 'Fan stays in normalized chamber bounds');
+        assert(Number.isFinite(fan.pointTimes[index]));
+        if (index > 0) {
+          assert(fan.pointTimes[index] > fan.pointTimes[index - 1], 'Fan pulse progresses forward in time');
+          assert(point[1] > fan.chamberPoints[index - 1][1], 'Fan spreads from apical root toward upper wall');
+        }
+        // In WPW local muscle may already be reached by the accessory route;
+        // that must not start or reverse the normal Purkinje pulse.
+        if (!fan.blocked && model.scenario.id !== 'wpw') near(fan.pointTimes[index], model.activation(chamber, ...point).onset, 1e-9);
+      });
+    }
+  }
+}
+Object.values(models).forEach(checkPurkinjeNetwork);
+
 // WPW is a race between two routes: a local breakthrough before His/Purkinje,
 // then fusion. The initial delta is not synthesized independently of that event.
 const wpw = models.wpw;
@@ -123,6 +169,7 @@ for (const scenario of sim.scenarios) {
     for (const control of [50, 110, 190, 240]) {
       const m = sim.createModel({ scenario: scenario.id, bpm, avDelay: control, branchDelay: control, accessory: control });
       assert(m.qrsStart >= 0 && m.qrsEnd < m.cycleMs, `${scenario.id}: complete QRS fits cycle`);
+      checkPurkinjeNetwork(m);
       for (let t = 0; t < m.cycleMs; t += 7) {
         const vector = m.vector(t);
         assert(vector.every(Number.isFinite));
@@ -157,4 +204,4 @@ for (const scenario of sim.scenarios) {
 }
 assert(sim.createModel({ scenario: 'invalid' }).scenario.id === 'normal');
 assert(sim.createModel({ bpm: NaN, avDelay: Infinity }).vector(NaN).every(Number.isFinite));
-console.log(`PASS: 6 mechanisms; activation ordering, BBB lead polarity, WPW fusion, AVRT loop, AV delay, ${samples.toLocaleString()} finite lead samples, exact limb-lead algebra, periodicity, and tissue/trace timing.`);
+console.log(`PASS: 6 mechanisms; activation ordering, BBB field/lead polarity, connected Purkinje fans, WPW fusion, AVRT loop, AV delay, ${samples.toLocaleString()} finite lead samples, exact limb-lead algebra, periodicity, and tissue/trace timing.`);

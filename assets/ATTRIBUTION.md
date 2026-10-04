@@ -18,11 +18,14 @@ Heart, vessels and torso share the original Visible Human coordinate frame: +X i
 
 The simulator uses the atlas mesh names to identify atrial, ventricular and septal tissue. Valves and vessels do not receive myocardial activation colors. Timing within a chamber is still an illustrative interpolation from the shared electrical model, not measured activation data or a cellular solver. Lead-explorer infarct highlights are representative regions within named tissue, not a coronary perfusion segmentation; the septal region is internal. Beat deformation is illustrative and the original geometry is preserved at rest.
 
+The translucent conduction overlay is separately constructed teaching geometry. Its SA/AV nodes, His bundle, bundle branches and Purkinje fans are not segmented fibers from the Visible Human specimen. Their positions are fitted to the atlas anatomy; their clocks come from the same reduced electrical model as the tissue colors and ECG. The anatomical mesh itself remains unchanged.
+
 ## Anatomy comparison references
 
 - OpenStax, *Anatomy and Physiology 2e*, §19.1, figures 19.2 and 19.6: position in the thorax, anterior/posterior surfaces, chambers and great vessels. https://openstax.org/books/anatomy-and-physiology-2e/pages/19-1-heart-anatomy
 - West Coast University, *Anatomy Series – Anatomy of the Heart – External/Superficial*: anterior/posterior surfaces, atrial appendages and coronary circulation. https://www.youtube.com/watch?v=RNjJlewslbI
 - University of Minnesota Visible Heart Laboratory, *Atlas of Human Cardiac Anatomy*: additional human-heart anatomical context. https://www.vhlab.umn.edu/atlas/
+- University of Minnesota, *Conduction System Tutorial*: nodal locations, bundle descent and subendocardial Purkinje branching. https://www.vhlab.umn.edu/atlas/conduction-system-tutorial/overview-of-cardiac-conduction.shtml
 
 Textbook figures and video frames were used for comparison, not redistributed. Checks include the anterior right ventricle, posterior left atrium, left ventricular apex, pulmonary trunk anterior to the aortic root, pulmonary venous return to the posterior left atrium, and the shared heart/torso frame. These checks do not constitute clinical validation of this application or cover all anatomical variation.
 
