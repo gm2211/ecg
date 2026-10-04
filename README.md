@@ -6,12 +6,13 @@ The Simulation page keeps the heart, ECG, conduction controls, playback, and a c
 
 ## Checks
 
-Run the three dependency-free Node checks from the project root:
+Run the four dependency-free Node checks from the project root:
 
 ```sh
 node scripts/check-simulation.cjs
 node scripts/check-waveform-variation.cjs
 node scripts/check-simulator-quiz.cjs
+node scripts/check-heart-anatomy.cjs
 ```
 
 ## Simulator quiz
@@ -22,12 +23,14 @@ Use **Choose answer** in the top bar, select a mechanism, and check your answer.
 
 ## Educational scope and assets
 
-The conduction model, anatomy placement, tissue display, and lead projections are simplified illustrations. They are not a clinically validated ECG solver, diagnostic tool, patient-specific simulation, or substitute for clinical training. Read the in-app assumptions and source links for model details.
+The anatomical heart, chambers, valves and vessels use the Human Reference Atlas in the same coordinate frame as the torso. The electrical model, electrode landmarks, tissue timing, and lead projections remain simplified illustrations. They are not a clinically validated ECG solver, diagnostic tool, patient-specific simulation, or substitute for clinical training. Read the in-app assumptions and source links for model details.
 
-The heart and torso asset credits and license details are in [`assets/ATTRIBUTION.md`](assets/ATTRIBUTION.md). Three.js and its included loaders are MIT licensed; see [`lib/THREE-LICENSE.txt`](lib/THREE-LICENSE.txt).
+The anatomical model replaces the earlier unsegmented sculpt. Electrical coloring follows named chamber meshes; great vessels and valves remain uncolored. See Sources → Anatomy in the simulator for textbook and video references.
+
+The heart and torso asset credits, source hashes, reproduction commands, and license details are in [`assets/ATTRIBUTION.md`](assets/ATTRIBUTION.md). Three.js and its included loaders are MIT licensed; see [`lib/THREE-LICENSE.txt`](lib/THREE-LICENSE.txt).
 
 ## GitHub Pages
 
 Run the checks above, then `node scripts/build-pages.cjs` to refresh the committed `docs/` site. Commit source changes together with the generated files. GitHub Pages publishes `main` → `/docs` after the PR merges.
 
-The build copies an explicit 14-file allowlist and a `.nojekyll` marker. Local screenshots, backups, tests, and development metadata are excluded from the published site. Branch-based publishing works with the existing GitHub login without requesting additional workflow permissions.
+The build copies an explicit 15-file allowlist and a `.nojekyll` marker. Local screenshots, backups, tests, and development metadata are excluded from the published site. Branch-based publishing works with the existing GitHub login without requesting additional workflow permissions.

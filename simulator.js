@@ -20,8 +20,8 @@
         <div id="sim-viewport"></div><div id="sim-labels"></div>
         <svg id="sim-map" viewBox="-145 -115 290 254" role="img" aria-labelledby="sim-map-title sim-map-description"></svg>
         <div class="sim-stage-head"><div role="group" aria-label="Electrical view"><button data-sim-view="anatomy" aria-pressed="false">Anatomy</button><button data-sim-view="heart" aria-pressed="false">Electrical model</button><button data-sim-view="map" aria-pressed="true">Map</button></div><label class="sim-overlay-toggle"><input id="sim-overlay" type="checkbox" checked> Electrical overlay</label></div>
-        <div id="sim-anatomy-status" role="status" aria-live="polite">Loading textured heart…</div>
-        <a class="sim-heart-credit" href="https://sketchfab.com/3d-models/realistic-human-heart-3f8072336ce94d18b3d0d055a1ece089" target="_blank" rel="noopener noreferrer">Heart by neshallads · CC BY 4.0</a>
+        <div id="sim-anatomy-status" role="status" aria-live="polite">Loading reference heart…</div>
+        <a class="sim-heart-credit" href="https://humanatlas.io/3d-reference-library" target="_blank" rel="noopener noreferrer">Heart: Human Reference Atlas · CC BY 4.0</a>
         <div class="sim-stage-hint" id="sim-view-hint">Drag to rotate · scroll to zoom · R / L are patient sides</div>
         <div class="sim-stage-bottom"><div class="sim-legend"><span>Resting</span><span class="active">Depolarizing</span><span class="depolarized">Depolarized</span><span class="recover">Repolarizing</span></div><button id="sim-reset-view">Reset view</button></div>
       </section>
@@ -108,14 +108,16 @@
   const sourcesPage=document.createElement('section'); sourcesPage.className='sim-detail-page';
   const sourceContent=[
     ['Model assumptions','This educational simulator uses one regional activation schedule for the electrical animation, vector, and schematic ECG. It is not a clinically validated ECG solver. Geometry, voltages, dipole weights and recovery are simplified; cellular ion currents and a torso volume conductor are not solved.'],
-    ['Reading the animation','The textured heart is an unsegmented sculpt. Its surface regions are approximate illustrations of the electrical schedule, not measured chamber boundaries. Use Electrical model or Map to inspect the conduction sequence. Color shows electrical state, not contraction. The purple vector in Electrical model projects onto each lead axis to produce the trace.'],
+    ['Reading the animation','The Anatomy view uses the Human Reference Atlas heart and matching vessels. Electrical color follows its named atrial, ventricular and septal meshes; vessels and valves stay uncolored. Timing within each chamber is a simplified interpolation, not a measured activation map. Use Electrical model or Map to inspect the conduction sequence. Color shows electrical state, not contraction. The purple vector in Electrical model projects onto each lead axis to produce the trace.'],
     ['Pathway examples','WPW shows one illustrative left free-wall pathway; actual locations and ECG patterns vary. Orthodromic AVRT is a steady re-entry loop, so its P wave represents returning atrial activation. The normal reference uses the same cycle length for comparison.'],
   ];
   const sourceCards=sourceContent.map(([title,copy])=>{const card=document.createElement('div');card.className='sim-source-card';card.innerHTML=`<h2>${title}</h2><p>${copy}</p>`;sourcesPage.append(card);return card;});
   const references=document.createElement('div');references.className='sim-source-card';references.innerHTML='<h2>Sources & credits</h2>';
   references.append(root.querySelector('.sim-source-links'));
+  const anatomySources=document.createElement('div');anatomySources.className='sim-source-card';
+  anatomySources.innerHTML='<h2>Anatomy references</h2><p>Geometry: Human Reference Atlas, Visible Human Male. Heart, vessels and torso retain their shared anatomical coordinates. Vessel colors distinguish circulation routes; they are not tissue colors. Cropped vessel ends represent the edge of the model.</p><div class="sim-source-links"><a href="https://humanatlas.io/3d-reference-library" target="_blank" rel="noopener noreferrer">Human Reference Atlas · CC BY 4.0</a><a href="https://openstax.org/books/anatomy-and-physiology-2e/pages/19-1-heart-anatomy" target="_blank" rel="noopener noreferrer">OpenStax · heart anatomy, figures 19.2 and 19.6</a><a href="https://www.youtube.com/watch?v=RNjJlewslbI" target="_blank" rel="noopener noreferrer">West Coast University · external heart anatomy</a></div>';
   const credit=root.querySelector('.sim-heart-credit').cloneNode(true);credit.className='sim-source-credit';references.append(credit);
-  sourcesPage.append(references);sourceCards.push(references);page(sourcesPage,'sources');
+  sourcesPage.append(references,anatomySources);sourceCards.push(references,anatomySources);page(sourcesPage,'sources');
   root.querySelector('.sim-footnote').remove();
   function paginate(container,cards,names,compact=false) {
     let index=0;const pager=document.createElement('div');pager.className='sim-page-pager';
@@ -127,7 +129,7 @@
     return next=>{index=Math.max(0,Math.min(cards.length-1,next));show();};
   }
   const showContext=paginate(contextBox,[nowCard,mechanismCard,ecgCard],['At this instant','Mechanism','ECG effect'],true);
-  paginate(sourcesPage,sourceCards,['Assumptions','Animation','Pathways','Sources']);
+  paginate(sourcesPage,sourceCards,['Assumptions','Animation','Pathways','Sources','Anatomy']);
   function showPage(id) {
     if(quizBlind()&&id==='sources')return;
     if(!quiz&&id==='quiz'&&root.dataset.page!=='quiz')priorStudyPage=root.dataset.page;
@@ -249,6 +251,9 @@
       $('sim-viewport').append(simRenderer.domElement);
       simScene = new THREE.Scene(); simCamera = new THREE.PerspectiveCamera(36,1,.1,50);
       orbit = new THREE.OrbitControls(simCamera,simRenderer.domElement); orbit.enableDamping = true; orbit.enablePan = false; orbit.minDistance = 3.5; orbit.maxDistance = 8; orbit.rotateSpeed = .6;
+      orbit.addEventListener('change',()=>{
+        if(stage.dataset.view==='anatomy') $('sim-view-hint').textContent=HeartAnatomy.orientation(simCamera,orbit.target)+' · drag to rotate';
+      });
       const environment=new THREE.PMREMGenerator(simRenderer);
       const roomEnvironment=new THREE.RoomEnvironment();
       simScene.environment=environment.fromScene(roomEnvironment,.03).texture; environment.dispose();
@@ -306,24 +311,12 @@
     if(anatomyGroup)anatomyGroup.visible=view==='anatomy';
     if(heartGroup)heartGroup.visible=view==='heart';
     root.querySelectorAll('[data-sim-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.simView===view)));
-    $('sim-view-hint').textContent=view==='map'?'Same activation clock · pathways shown schematically':view==='anatomy'?'Drag to rotate · scroll to zoom · surface regions are approximate':'Drag to rotate · scroll to zoom · R / L are patient sides';
+    $('sim-view-hint').textContent=view==='map'?'Same activation clock · pathways shown schematically':view==='anatomy'?'Drag to rotate · scroll to zoom · atlas chambers, illustrative timing':'Drag to rotate · scroll to zoom · R / L are patient sides';
     resetView();
   }
   root.querySelectorAll('[data-sim-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.simView)));
   $('sim-reset-view').addEventListener('click',resetView);
   $('sim-overlay').addEventListener('change',e=>anatomyUniforms.activationStrength.value=e.target.checked?1:0);
-  // The source is one unsegmented sculpt. Coarse surface zones illustrate the
-  // existing activation schedule; they are not registered chamber boundaries.
-  function surfaceZone(x,y,z) {
-    const ventricular=y<.02;
-    const chamber=ventricular?(x<.08?'RV':'LV'):(x<-.1?'RA':'LA');
-    const cx=chamber==='RV'?-.3:chamber==='LV'?.29:chamber==='RA'?-.43:.2;
-    const cy=ventricular?-.49:.2;
-    const coords=[(x-cx)/(ventricular?.38:.32),(y-cy)/(ventricular?.62:.29),z/.43];
-    // Fade at the great-vessel roots rather than animating the aorta as muscle.
-    const mask=Math.max(0,Math.min(1,(.5-y)/.17));
-    return {chamber,coords,mask};
-  }
   function refreshAnatomyTiming() {
     if(!model)return;
     for(const field of anatomyFields) {
@@ -338,23 +331,24 @@
   }
   function loadAnatomy() {
     if(anatomyLoading)return; anatomyLoading=true;
-    const status=$('sim-anatomy-status'); status.hidden=false; status.textContent='Loading textured heart…';
+    const status=$('sim-anatomy-status'); status.hidden=false; status.textContent='Loading reference heart…';
     stage.dataset.anatomyState='loading';
-    new THREE.GLTFLoader().load('assets/heart.glb',gltf=>{
-      gltf.scene.updateMatrixWorld(true);
-      const bounds=new THREE.Box3().setFromObject(gltf.scene),center=bounds.getCenter(new THREE.Vector3()),size=bounds.getSize(new THREE.Vector3());
-      const scale=2.3/Math.max(size.x,size.y,size.z);
-      gltf.scene.traverse(node=>{
-        if(!node.isMesh)return;
-        const geometry=node.geometry.clone(); geometry.applyMatrix4(node.matrixWorld); geometry.translate(-center.x,-center.y,-center.z); geometry.scale(scale,scale,scale);
+    new THREE.GLTFLoader().load('assets/heart.glb?v=hra-v1',gltf=>{
+      const anatomicalView=HeartAnatomy.prepare(THREE,gltf.scene,2.3);
+      anatomicalView.entries.forEach(entry=>{
+        const {geometry,name,chamber}=entry;
         const positions=geometry.attributes.position,zones=[];
-        for(let i=0;i<positions.count;i++)zones.push(surfaceZone(positions.getX(i),positions.getY(i),positions.getZ(i)));
-        geometry.setAttribute('activationSchedule',new THREE.BufferAttribute(new Float32Array(positions.count*4),4));
-        anatomyFields.push({geometry,zones});
-        const source=node.material;
-        const material=new THREE.MeshPhysicalMaterial({map:source.map,normalMap:source.normalMap,normalScale:new THREE.Vector2(.8,.8),roughnessMap:source.roughnessMap,roughness:.88,metalness:0,envMapIntensity:.52,clearcoat:.12,clearcoatRoughness:.34,side:THREE.DoubleSide});
-        [material.map,material.normalMap,material.roughnessMap].forEach(texture=>{if(texture){texture.anisotropy=Math.min(8,simRenderer.capabilities.getMaxAnisotropy());texture.needsUpdate=true;}});
-        material.onBeforeCompile=shader=>{
+        if(chamber) {
+          for(let i=0;i<positions.count;i++) {
+            const coords=HeartAnatomy.coordinates(THREE,anatomicalView,entry,new THREE.Vector3().fromBufferAttribute(positions,i));
+            zones.push({chamber,coords,mask:1});
+          }
+          geometry.setAttribute('activationSchedule',new THREE.BufferAttribute(new Float32Array(positions.count*4),4));
+          anatomyFields.push({geometry,zones});
+        }
+        const material=HeartAnatomy.material(THREE,name);
+        if(chamber) material.onBeforeCompile=shader=>{
+
           Object.assign(shader.uniforms,anatomyUniforms);
           shader.vertexShader='attribute vec4 activationSchedule; varying vec4 vActivationSchedule;\n'+shader.vertexShader;
           shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvActivationSchedule = activationSchedule;');
@@ -369,12 +363,12 @@
             vec3 electricalGlow = vec3(1.0, 0.52, 0.075) * front * 0.32 + vec3(0.04, 0.55, 0.4) * recovery * 0.14 + vec3(0.2, 0.08, 0.25) * plateau * 0.035;
             totalEmissiveRadiance += electricalGlow * vActivationSchedule.w * activationStrength;`);
         };
-        const mesh=new THREE.Mesh(geometry,material); mesh.name='Textured anatomical heart with electrical overlay'; anatomyGroup.add(mesh);
+        const mesh=new THREE.Mesh(geometry,material); mesh.name=name; mesh.userData.chamber=chamber; anatomyGroup.add(mesh);
       });
       anatomyLoading=false; status.hidden=true; stage.dataset.anatomyState='ready'; refreshAnatomyTiming();
     },undefined,()=>{
       anatomyLoading=false; stage.dataset.anatomyState='error';
-      status.innerHTML='Textured heart could not load. <button type="button">Retry</button>';
+      status.innerHTML='Reference heart could not load. <button type="button">Retry</button>';
       status.querySelector('button').addEventListener('click',loadAnatomy);
     });
   }
