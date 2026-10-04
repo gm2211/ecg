@@ -478,8 +478,8 @@ body {
   <!-- 3D Scene -->
   <div id="scene-pane">
     <div class="scene-heading"><span class="eyebrow">CARDIAC ANATOMY</span><h2>A different perspective.</h2><p>Explore the heart behind every lead.</p></div>
-    <div class="scene-toolbar"><div class="scene-mode" role="group" aria-label="Anatomy view"><button data-view="heart" aria-pressed="true">Heart</button><button data-view="electrodes" aria-pressed="false">Electrodes</button></div></div>
-    <div class="scene-footer"><div><span class="live-dot"></span><span id="scene-caption">Anatomical heart · textured model</span><small>Drag to orbit · scroll to zoom</small></div><div class="scene-actions"><button id="btn-rotate" aria-pressed="false" title="Toggle automatic rotation">Orbit</button><button id="btn-reset-view" title="Reset camera position">Reset view</button></div></div>
+    <div class="scene-toolbar"><div class="scene-mode" role="group" aria-label="Anatomy view"><button data-view="heart" aria-pressed="false">Heart</button><button data-view="electrodes" aria-pressed="true">Electrodes</button></div></div>
+    <div class="scene-footer"><div><span class="live-dot"></span><span id="scene-caption">Heart in chest · reference proportions</span><small>Drag to orbit · scroll to zoom</small></div><div class="scene-actions"><button id="btn-rotate" aria-pressed="false" title="Toggle automatic rotation">Orbit</button><button id="btn-reset-view" title="Reset camera position">Reset view</button></div></div>
     <div id="body-status" role="status" aria-live="polite" hidden>Loading anatomical torso…</div>
     <div id="model-status" role="status" aria-live="polite">Loading anatomical model…</div>
     <a class="model-credit" href="https://sketchfab.com/3d-models/realistic-human-heart-3f8072336ce94d18b3d0d055a1ece089" target="_blank" rel="noopener noreferrer">Heart by neshallads · CC BY 4.0</a>
@@ -1082,7 +1082,7 @@ function fitElectrodesToBody(geometry) {
   if (popupLead) buildLeadArrows(popupLead);
 }
 
-let anatomyView='heart';
+let anatomyView='electrodes';
 const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
 function resetCamera() {
   controls.target.set(0,anatomyView==='heart'?.16:-.04,0);
@@ -2994,7 +2994,7 @@ setTimeout(() => {
 }, 100);
 updateInfoPane();
 applyScenario('normal');
-setAnatomyView('heart');
+setAnatomyView(anatomyView);
 loadBody();
 
 // Kick off animation
