@@ -56,7 +56,7 @@
   scenarioPicker.innerHTML=`<span>Mechanism</span> <select id="sim-scenario-select" aria-label="Conduction mechanism">${api.scenarios.map(s=>`<option value="${s.id}">${s.label}</option>`).join('')}</select>`;
   root.querySelector('.sim-intro').append(scenarioPicker);
   const tabs=document.createElement('div'); tabs.className='sim-tabs';
-  tabs.innerHTML=`<div class="sim-page-tabs" role="tablist" aria-label="Simulator pages">${[['simulation','Simulation'],['quiz','Quiz'],['controls','Controls'],['sources','Sources']].map(([id,label])=>`<button id="sim-tab-${id}" role="tab" data-sim-page-tab="${id}" aria-controls="sim-page-${id}" aria-selected="${id==='simulation'}" tabindex="${id==='simulation'?0:-1}">${label}</button>`).join('')}</div><div class="sim-mobile-views" role="group" aria-label="Simulation panel"><button data-observe="heart" aria-pressed="true">Heart</button><button data-observe="ecg" aria-pressed="false">ECG</button></div>`;
+  tabs.innerHTML=`<div class="sim-page-tabs" role="tablist" aria-label="Simulator pages">${[['simulation','Simulation'],['quiz','Quiz'],['sources','Sources']].map(([id,label])=>`<button id="sim-tab-${id}" role="tab" data-sim-page-tab="${id}" aria-controls="sim-page-${id}" aria-selected="${id==='simulation'}" tabindex="${id==='simulation'?0:-1}">${label}</button>`).join('')}</div><div class="sim-mobile-views" role="group" aria-label="Simulation panel"><button data-observe="heart" aria-pressed="true">Heart</button><button data-observe="ecg" aria-pressed="false">ECG</button></div>`;
   root.querySelector('.sim-intro').after(tabs);
   const content=document.createElement('div'); content.className='sim-content'; tabs.after(content);
   function page(element,id) {
@@ -86,7 +86,25 @@
   const ecgCard=document.createElement('div');ecgCard.innerHTML='<div class="sim-kicker">ECG effect</div><h2>How it shapes the trace</h2><p id="sim-mechanism-ecg"></p>';
   const nowCard=root.querySelector('.sim-phase-copy');
   contextBox.append(nowCard,mechanismCard,ecgCard);layout.append(contextBox);
-  page(root.querySelector('.sim-parameters'),'controls'); explanation.remove();
+  const parameters=root.querySelector('.sim-parameters');parameters.setAttribute('role','group');parameters.setAttribute('aria-label','Conduction controls');parameters.dataset.helpOpen='false';
+  const parameterFields=document.createElement('div');parameterFields.className='sim-parameter-fields';
+  const parameterRows=Array.from(parameters.querySelectorAll('.sim-parameter'));
+  parameterRows.forEach(row=>{const input=row.querySelector('input');input.setAttribute('aria-label',row.querySelector('label').textContent);input.setAttribute('aria-describedby','sim-param-hint');parameterFields.append(row);});
+  parameters.querySelector('.sim-param-title').after(parameterFields);
+  const parameterChoice=document.createElement('select');parameterChoice.id='sim-parameter-select';parameterChoice.setAttribute('aria-label','Adjust parameter');
+  parameterChoice.innerHTML='<option value="rate">Heart rate</option><option value="av">P onset → His</option><option value="branch">Ventricular delay</option><option value="accessory">Bypass timing</option>';parameters.prepend(parameterChoice);
+  const parameterHelp=document.createElement('button');parameterHelp.id='sim-param-help';parameterHelp.textContent='?';parameterHelp.setAttribute('aria-label','About conduction controls');parameterHelp.setAttribute('aria-expanded','false');parameterHelp.setAttribute('aria-controls','sim-param-hint');
+  parameters.querySelector('.sim-param-title h3').textContent='Conduction';parameters.querySelector('.sim-param-title').append(parameterHelp);
+  function setParameterHelp(open){parameters.dataset.helpOpen=String(open);parameterHelp.setAttribute('aria-expanded',String(open));}
+  parameterHelp.addEventListener('click',()=>setParameterHelp(parameters.dataset.helpOpen!=='true'));
+  parameters.addEventListener('keydown',e=>{if(e.key==='Escape'){setParameterHelp(false);parameterHelp.focus();e.stopPropagation();}});
+  function syncParameterChoice(){
+    Array.from(parameterChoice.options).forEach(option=>{option.disabled=option.hidden=$(`sim-${option.value}`).closest('.sim-parameter').hidden;});
+    if(parameterChoice.selectedOptions[0].disabled)parameterChoice.value='rate';
+    parameterRows.forEach(row=>row.dataset.active=String(row.querySelector('input').id===`sim-${parameterChoice.value}`));
+  }
+  parameterChoice.addEventListener('change',syncParameterChoice);
+  player.prepend(parameters);explanation.remove();
   const sourcesPage=document.createElement('section'); sourcesPage.className='sim-detail-page';
   const sourceContent=[
     ['Model assumptions','This educational simulator uses one regional activation schedule for the electrical animation, vector, and schematic ECG. It is not a clinically validated ECG solver. Geometry, voltages, dipole weights and recovery are simplified; cellular ion currents and a torso volume conductor are not solved.'],
@@ -111,7 +129,7 @@
   const showContext=paginate(contextBox,[nowCard,mechanismCard,ecgCard],['At this instant','Mechanism','ECG effect'],true);
   paginate(sourcesPage,sourceCards,['Assumptions','Animation','Pathways','Sources']);
   function showPage(id) {
-    if(quiz&&((id==='controls')||(quizBlind()&&id==='sources')))return;
+    if(quizBlind()&&id==='sources')return;
     if(!quiz&&id==='quiz'&&root.dataset.page!=='quiz')priorStudyPage=root.dataset.page;
     root.dataset.page=id;content.querySelectorAll('[data-sim-page]').forEach(p=>p.hidden=p.dataset.simPage!==id);
     tabs.querySelectorAll('[role="tab"]').forEach(b=>{const selected=b.dataset.simPageTab===id;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;});
@@ -125,6 +143,7 @@
   tabs.querySelectorAll('[data-observe]').forEach(b=>b.addEventListener('click',()=>{root.dataset.observe=b.dataset.observe;tabs.querySelectorAll('[data-observe]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));resize();}));
   $('sim-events').className='sim-event-pager';
   $('sim-events').innerHTML='<button id="sim-prev-event" aria-label="Previous electrical event">‹</button><label for="sim-event-select">Event</label><select id="sim-event-select" aria-label="Electrical event"></select><button id="sim-next-event" aria-label="Next electrical event">›</button>';
+  $('sim-phase-title').before($('sim-events'));
   let currentEvents=[];
   const state = {scenario:'normal', time:0, playing:!matchMedia('(prefers-reduced-motion: reduce)').matches, speed:.25, lead:'II', compare:true, inspectedEvent:null};
   let model, normal, params, lastFrame = 0, phaseId = '', traceCache = [];
@@ -147,7 +166,7 @@
     const active=!!quiz,blind=quizBlind();root.dataset.mode=active?'quiz':'study';root.dataset.quizBlind=String(blind);
     scenarioPicker.hidden=active;root.querySelector('.sim-scenarios').hidden=active;root.querySelector('.sim-intro-note').hidden=active;exitQuiz.hidden=!active;
     $('sim-tab-simulation').textContent=active?'Inspect':'Simulation';$('sim-tab-quiz').textContent=active?'Answer':'Quiz';
-    contextBox.hidden=blind;$('sim-tab-sources').hidden=blind;$('sim-tab-controls').hidden=active;
+    contextBox.hidden=blind;$('sim-tab-sources').hidden=blind;parameters.hidden=active;
     $('sim-events').hidden=active;quizDock.hidden=!active;$('sim-quiz-open').hidden=!active;$('sim-compare').closest('label').hidden=blind;
     root.querySelector('.sim-intro h1').textContent=active?(quiz.complete?'Quiz complete':`Case ${quiz.index+1} of ${quiz.total}`):'Electrical simulator';
     root.querySelector('.sim-intro > div > p').textContent=active?'Inspect the activation. Identify the mechanism.':'Change the conduction. See why the ECG changes.';
@@ -161,7 +180,7 @@
     $('sim-quiz-open').textContent=quiz.complete?'View score →':quiz.answered?'View result →':'Choose answer →';
   }
   function startQuiz() {
-    if(!quiz)studySnapshot={state:{...state},params:{...params},page:priorStudyPage,contextPage:Number(contextBox.dataset.explanationPage),view:stage.dataset.view,observe:root.dataset.observe,camera:simCamera?.position.clone(),target:orbit?.target.clone()};
+    if(!quiz)studySnapshot={state:{...state},params:{...params},page:priorStudyPage,contextPage:Number(contextBox.dataset.explanationPage),parameter:parameterChoice.value,view:stage.dataset.view,observe:root.dataset.observe,camera:simCamera?.position.clone(),target:orbit?.target.clone()};
     quiz=window.EPSimQuiz.createSession(scenarios.map(s=>s.id));loadQuizCase();
   }
   function loadQuizCase() {
@@ -173,6 +192,7 @@
     if(!quiz||!studySnapshot)return;
     const saved=studySnapshot;quiz=null;studySnapshot=null;
     setScenario(saved.state.scenario);params={...saved.params};rebuild();Object.assign(state,saved.state);
+    parameterChoice.value=saved.parameter;syncParameterChoice();
     $('sim-lead').value=state.lead;$('sim-speed').value=state.speed;$('sim-compare').checked=state.compare;
     root.dataset.observe=saved.observe;tabs.querySelectorAll('[data-observe]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.observe===saved.observe)));
     setView(saved.view);if(simCamera&&saved.camera){simCamera.position.copy(saved.camera);orbit.target.copy(saved.target);orbit.update();}
@@ -454,6 +474,7 @@
     $('sim-rate').min=id==='avrt'?150:50; $('sim-rate').max=id==='avrt'?200:120;
     $('sim-av').min=id==='avblock'?200:110; $('sim-av').max=id==='avblock'?240:190;
     $('sim-av-row').hidden=id==='avrt'; $('sim-branch-row').hidden=!['rbbb','lbbb'].includes(id); $('sim-accessory-row').hidden=id!=='wpw';
+    syncParameterChoice();setParameterHelp(false);
     $('sim-param-hint').textContent=id==='avrt'?'Rate and forward conduction time are linked to close the re-entry loop. The accessory pathway carries activation back to the atria.':id==='wpw'?'One left free-wall bypass. Earlier breakthrough increases pre-excitation before normal conduction catches up.':'P onset → His includes atrial and AV conduction. It is not AV-node delay alone.';
     $('sim-mechanism-title').textContent=choices[id][0];
     $('sim-mechanism-copy').textContent=sc.mechanism;$('sim-mechanism-ecg').textContent=sc.ecg;
@@ -588,7 +609,7 @@
     if(simRenderer){const w=$('sim-viewport').clientWidth,h=$('sim-viewport').clientHeight;if(w&&h){simRenderer.setSize(w,h,false);simCamera.aspect=w/h;simCamera.updateProjectionMatrix();}}
     drawTraces();
   }
-  new ResizeObserver(resize).observe(root);
+  new ResizeObserver(resize).observe(layout);
   function workspace(value) {
     document.body.dataset.workspace=value;
     nav.querySelectorAll('[data-workspace]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.workspace===value)));

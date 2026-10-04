@@ -234,7 +234,6 @@ body[data-workspace="simulator"] {
 .sim-page-pager button { border: 1px solid #dce2f0; border-radius: 7px; padding: 8px 12px; background: #f8f9fc; color: #56648d; font-size: 11px; }
 .sim-page-pager button:disabled { opacity: .45; cursor: default !important; }
 .sim-page-pager output { color: #7c879d; font: 11px ui-monospace, SFMono-Regular, monospace; }
-.sim-detail-page .sim-parameters { width: 100%; max-width: 760px; margin: auto; }
 .sim-detail-page .sim-source-links { gap: 8px 18px; }
 .sim-context { grid-column: 2 / -1; grid-row: 2; position: relative; height: 108px; min-width: 0; padding: 12px 16px; border: 1px solid var(--sim-line); border-left: 3px solid #dcc184; border-radius: 9px; background: #fff; }
 .sim-context .sim-phase-copy, .sim-context .sim-mechanism-card { min-height: 0; padding: 0; border: 0; background: transparent; }
@@ -248,7 +247,29 @@ body[data-workspace="simulator"] {
 #simulator > .sim-content { height: 100%; }
 .sim-page[data-sim-page="simulation"] > .sim-stage,
 .sim-page[data-sim-page="simulation"] > .sim-traces { height: 100%; }
-#simulator .sim-parameters[data-sim-page="controls"] { height: 100%; max-width: 760px; margin: 0 auto; overflow: hidden; padding: 24px; }
+#simulator:not([data-page="simulation"]) .sim-parameters { display: none; }
+/* Adjust conduction while keeping the changing heart and ECG in view. */
+.sim-player .sim-parameters { position: relative; display: grid; grid-template-columns: 116px minmax(0,1fr) auto; align-items: center; gap: 16px; padding: 0 0 8px; margin-bottom: 8px; border: 0; border-bottom: 1px solid var(--sim-line); border-radius: 0; background: transparent; }
+.sim-player .sim-param-title { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px 9px; margin: 0; }
+.sim-player .sim-param-title h3 { flex-basis: 100%; font-size: 11px; }
+.sim-player .sim-param-title button { padding: 2px 0; }
+#sim-param-help { width: 22px; height: 22px; border: 1px solid #dce2f0; border-radius: 50%; background: #f8f9fc; }
+#sim-parameter-select { display: none; }
+.sim-parameter-fields { display: flex; gap: 18px; min-width: 0; }
+.sim-player .sim-parameter { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 6px; margin: 0; }
+.sim-player .sim-parameter[hidden] { display: none; }
+.sim-player .sim-parameter label { grid-column: 1; grid-row: 1; }
+.sim-player .sim-parameter output { grid-column: 2; grid-row: 1; }
+.sim-player .sim-parameter input { grid-column: 1 / -1; grid-row: 2; min-width: 30px; height: 22px; margin: 0; }
+.sim-player .sim-measures { margin: 0; padding: 0 0 0 16px; border: 0; border-left: 1px solid var(--sim-line); gap: 14px; }
+.sim-player .sim-measures strong { display: block; margin: 5px 0 0; font-size: 12px; }
+.sim-player .sim-param-hint { display: none; position: absolute; z-index: 8; bottom: calc(100% + 8px); left: 0; max-width: min(440px,100%); padding: 12px 15px; margin: 0; background: #fff; border: 1px solid #dfe4ef; border-radius: 9px; box-shadow: 0 5px 20px #26355120; color: #5d6b84; font-size: 12px; }
+.sim-player .sim-parameters[data-help-open="true"] .sim-param-hint { display: block; }
+#simulator[data-mode="study"] .sim-phase-copy h2 { display: none; }
+.sim-context .sim-event-pager { margin: 5px 0; gap: 5px; }
+.sim-context .sim-event-pager > label { display: none; }
+.sim-context .sim-event-pager select { max-width: calc(100% - 62px); padding: 3px 5px; font-size: 11px; }
+.sim-context .sim-event-pager button { padding: 3px 8px; }
 #simulator:not([data-page="simulation"]) .sim-scenario-picker { display: flex; align-items: center; gap: 8px; }
 #simulator:not([data-page="simulation"]) .sim-intro-note { display: none; }
 .sim-scenario-picker { color: #7a8399; font-size: 10px; white-space: nowrap; }
@@ -324,6 +345,21 @@ body[data-workspace="simulator"] {
   .sim-scenario-picker { display: flex; align-items: center; gap: 8px; }
   .sim-intro-note, .sim-intro .sim-kicker, .sim-intro > div > p { display: none; }
 }
+@media (max-width: 850px) {
+  .sim-player .sim-parameters { grid-template-columns: 130px minmax(0,1fr) auto; gap: 3px 10px; padding-bottom: 5px; margin-bottom: 5px; }
+  #sim-parameter-select { display: block; grid-column: 1; grid-row: 1; width: 100%; min-width: 0; border: 1px solid #dfe3ed; border-radius: 5px; padding: 4px; background: #f6f7fb; color: #3a4464; font-size: 10px; }
+  .sim-player .sim-param-title { grid-column: 3; grid-row: 2; justify-content: flex-end; gap: 8px; }
+  .sim-player .sim-param-title h3 { display: none; }
+  .sim-parameter-fields { grid-column: 2 / -1; grid-row: 1; }
+  .sim-player .sim-parameter:not([data-active="true"]) { display: none; }
+  .sim-player .sim-parameter { grid-template-columns: minmax(0,1fr) 49px; gap: 5px; }
+  .sim-player .sim-parameter label { display: none; }
+  .sim-player .sim-parameter input { grid-column: 1; grid-row: 1; }
+  .sim-player .sim-measures { grid-column: 1 / 3; grid-row: 2; padding: 0; border: 0; gap: 10px; }
+  .sim-player .sim-measures div { font-size: 9px; }
+  .sim-player .sim-measures strong { display: inline; margin: 0 0 0 3px; font-size: 10px; }
+  #sim-param-help { width: 20px; height: 20px; }
+}
 @media (max-width: 620px) {
   #simulator[data-mode="quiz"] .sim-layout { grid-template-columns: minmax(0,1fr); }
   .sim-quiz-page { padding: 0; align-items: center; }
@@ -384,12 +420,18 @@ body[data-workspace="simulator"] {
   .sim-event-pager button, .sim-event-pager select { padding: 4px 6px; font-size: 9px; }
   .sim-detail-page { gap: 9px; padding: 8px 1px; }
   .sim-phase-copy, .sim-mechanism-card, .sim-source-card { padding: 12px; }
-  .sim-detail-page .sim-parameters { padding: 12px; }
   .sim-detail-page h2 { font-size: 18px; }
   .sim-detail-page p { font-size: 13px; line-height: 1.55; }
   .sim-scenario-picker > span { display: none; }
 }
+@media (max-width: 620px) and (max-height: 650px) {
+  #simulator[data-mode="study"][data-page="simulation"] .sim-tabs { flex-wrap: nowrap; }
+  #simulator[data-mode="study"] .sim-page-tabs { flex: 3 1 0; }
+  #simulator[data-mode="study"][data-page="simulation"] .sim-mobile-views { flex: 2 1 0; border-left: 1px solid var(--sim-line); padding-left: 3px; }
+  #simulator[data-mode="study"] .sim-mobile-views button { padding: 4px 3px; }
+}
 @media (max-width: 360px) {
+  .sim-player .sim-measures strong { display: block; margin: 2px 0 0; }
   .sim-context { height: 148px; }
   .sim-transport { gap: 4px; }
   .sim-play { width: 56px; }
