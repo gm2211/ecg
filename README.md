@@ -39,4 +39,4 @@ The heart and torso asset credits, source hashes, reproduction commands, and lic
 
 Run the checks above, then `node scripts/build-pages.cjs` to refresh the committed `docs/` site. Commit source changes together with the generated files. GitHub Pages publishes `main` → `/docs` after the PR merges.
 
-The build copies an explicit 17-file allowlist and a `.nojekyll` marker. Local screenshots, backups, tests, and development metadata are excluded from the published site. Branch-based publishing works with the existing GitHub login without requesting additional workflow permissions.
+The build copies an explicit 17-file allowlist and a `.nojekyll` marker, and versions local script and stylesheet URLs by content hash to refresh browser caches after deployment. Local screenshots, backups, tests, and development metadata are excluded from the published site. Branch-based publishing works with the existing GitHub login without requesting additional workflow permissions.
