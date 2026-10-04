@@ -12,6 +12,7 @@ const rootFiles = [
   'simulation-model.js',
   'simulator-quiz.js',
   'simulator.js',
+  'heart-anatomy.js',
 ];
 const assetFiles = [
   'assets/heart.glb',

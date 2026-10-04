@@ -479,10 +479,10 @@ body {
   <div id="scene-pane">
     <div class="scene-heading"><span class="eyebrow">CARDIAC ANATOMY</span><h2>A different perspective.</h2><p>Explore the heart behind every lead.</p></div>
     <div class="scene-toolbar"><div class="scene-mode" role="group" aria-label="Anatomy view"><button data-view="heart" aria-pressed="false">Heart</button><button data-view="electrodes" aria-pressed="true">Electrodes</button></div></div>
-    <div class="scene-footer"><div><span class="live-dot"></span><span id="scene-caption">Heart in chest · reference proportions</span><small>Drag to orbit · scroll to zoom</small></div><div class="scene-actions"><button id="btn-rotate" aria-pressed="false" title="Toggle automatic rotation">Orbit</button><button id="btn-reset-view" title="Reset camera position">Reset view</button></div></div>
+    <div class="scene-footer"><div><span class="live-dot"></span><span id="scene-caption">Heart in chest · atlas alignment</span><small>Drag to orbit · scroll to zoom</small></div><div class="scene-actions"><button id="btn-rotate" aria-pressed="false" title="Toggle automatic rotation">Orbit</button><button id="btn-reset-view" title="Reset camera position">Reset view</button></div></div>
     <div id="body-status" role="status" aria-live="polite" hidden>Loading anatomical torso…</div>
     <div id="model-status" role="status" aria-live="polite">Loading anatomical model…</div>
-    <a class="model-credit" href="https://sketchfab.com/3d-models/realistic-human-heart-3f8072336ce94d18b3d0d055a1ece089" target="_blank" rel="noopener noreferrer">Heart by neshallads · CC BY 4.0</a>
+    <a class="model-credit" href="https://humanatlas.io/3d-reference-library" target="_blank" rel="noopener noreferrer">Heart: Human Reference Atlas · CC BY 4.0</a>
     <a id="body-credit" class="model-credit body-credit" href="https://hubmapconsortium.github.io/ccf/pages/ccf-3d-reference-library.html" target="_blank" rel="noopener noreferrer" hidden>Body: Human Reference Atlas · CC BY 4.0</a>
     <div id="label-container"></div>
     <div id="infarct-tag">INFARCT</div>
@@ -557,6 +557,7 @@ body {
 <script src="lib/OrbitControls.js"></script>
 <script src="lib/GLTFLoader.js"></script>
 <script src="lib/RoomEnvironment.js"></script>
+<script src="heart-anatomy.js"></script>
 <script>
 'use strict';
 
@@ -605,15 +606,15 @@ const LEAD_COMPUTATION = {
   'V6':  { type:'precordial', elec:'V6', neg:['RA','LA','LL'] },
 };
 
-// Illustrative surface regions in normalized mesh coordinates. Each anchor was
-// raycast onto the imported surface; these are not clinical segmentations.
+// Representative teaching regions in original HRA meters. Coronary territories vary;
+// these are local highlights, not a patient-specific perfusion segmentation.
 const TERRITORY = {
-  inferior:  { center:[ .10,-.43, .25], r:.10, motion:'hypokinetic' },
-  anterior:  { center:[ .12,-.12, .32], r:.10, motion:'akinetic' },
-  septal:    { center:[-.07,-.05, .35], r:.08, motion:'akinetic' },
-  lateral:   { center:[ .32,-.20, .17], r:.09, motion:'hypokinetic' },
-  posterior: { center:[ .06,-.12,-.34], r:.09, motion:'hypokinetic' },
-  rv:        { center:[-.22,-.16, .31], r:.10, motion:'dyskinetic' },
+  inferior:  { source:[.046,.432,.032], chamber:'LV', r:.024, motion:'hypokinetic' },
+  anterior:  { source:[.057,.468,.070], chamber:'LV', r:.024, motion:'akinetic' },
+  septal:    { source:[.033,.458,.053], chamber:'septum', r:.025, motion:'akinetic' },
+  lateral:   { source:[.073,.463,.032], chamber:'LV', r:.025, motion:'hypokinetic' },
+  posterior: { source:[.040,.473,.004], chamber:'LV', r:.025, motion:'hypokinetic' },
+  rv:        { source:[.006,.466,.074], chamber:'RV', r:.025, motion:'dyskinetic' },
 };
 
 // Scenario definitions
@@ -646,7 +647,7 @@ const SCENARIOS = {
     miss12: '12-lead reveals extensive anterior ST elevation across V1–V5, confirming proximal LAD occlusion.',
   },
   septal: {
-    title: 'Septal MI (LAD Diagonal)',
+    title: 'Septal MI (LAD septal branches)',
     body: 'ST elevation in V1–V2 with loss of septal Q waves in I and aVL indicates septal branch occlusion.',
     st: { I:0.3,II:0,III:0,aVR:0,aVL:0.5,aVF:0,V1:1.8,V2:2.0,V3:1.2,V4:0.4,V5:0,V6:0 },
     abnormal: ['V1','V2','V3'],
@@ -903,6 +904,11 @@ scene.environment = pmremGen.fromScene(room, 0.06).texture;
 pmremGen.dispose();
 const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100);
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.addEventListener('change', () => {
+  const caption = document.getElementById('scene-caption');
+  const text = HeartAnatomy.orientation(camera, controls.target);
+  if (caption.textContent !== text) caption.textContent = text;
+});
 controls.enableDamping = true;
 controls.dampingFactor = 0.085;
 controls.zoomSpeed = 0.45;
@@ -922,7 +928,7 @@ rimLight.position.set(1, 3, -3);
 scene.add(rimLight);
 scene.add(new THREE.HemisphereLight(0xc4d6fa, 0x352333, 0.45));
 
-// CC BY 4.0 textured anatomical mesh; see assets/ATTRIBUTION.md.
+// Segmented CC BY 4.0 HRA heart and vessels in the torso's coordinate frame.
 const heartPivot = new THREE.Group();
 heartPivot.position.set(0, .07, 0);
 scene.add(heartPivot);
@@ -932,53 +938,43 @@ const heartUniforms = {
   territoryRadius: {value: .22},
   territoryStrength: {value: 0},
   territoryMotion: {value: 1},
+  territoryChamber: {value: 0},
 };
 let heartLoading = false;
+let heartAnatomy = null;
 function loadHeart() {
   if (heartLoading) return;
   heartLoading = true;
   const status = document.getElementById('model-status');
   status.hidden = false;
   status.innerHTML = '<span class="model-spinner" aria-hidden="true"></span><span>Loading anatomical model…</span>';
-  new THREE.GLTFLoader().load('assets/heart.glb', gltf => {
-    gltf.scene.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(gltf.scene);
-    const center = bounds.getCenter(new THREE.Vector3());
-    const size = bounds.getSize(new THREE.Vector3());
-    const scale = 1.32 / Math.max(size.x, size.y, size.z);
-    const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    gltf.scene.traverse(node => {
-      if (!node.isMesh) return;
-      const geometry = node.geometry.clone();
-      geometry.applyMatrix4(node.matrixWorld);
-      geometry.translate(-center.x, -center.y, -center.z);
-      geometry.scale(scale, scale, scale);
-      const source = node.material;
-      const material = new THREE.MeshPhysicalMaterial({
-        map: source.map, normalMap: source.normalMap,
-        normalScale: new THREE.Vector2(.8, .8),
-        roughnessMap: source.roughnessMap, roughness: .88,
-        metalness: 0, envMapIntensity: .52,
-        clearcoat: .12, clearcoatRoughness: .34,
-        side: THREE.DoubleSide,
-      });
-      [material.map, material.normalMap, material.roughnessMap].forEach(tex => {
-        if (tex) { tex.anisotropy = anisotropy; tex.needsUpdate = true; }
-      });
-      // Small, continuous deformation preserves the sculpt and attached vessels.
+  new THREE.GLTFLoader().load('assets/heart.glb?v=hra-v1', gltf => {
+    heartAnatomy = HeartAnatomy.prepare(THREE, gltf.scene, 1.32);
+    heartAnatomy.entries.forEach(entry => {
+      const {geometry, name, chamber} = entry;
+      const material = HeartAnatomy.material(THREE, name);
+      // Continuous lower-heart deformation keeps attached vessels aligned.
+      // Motion is illustrative; source geometry is preserved at rest.
       // Territory emphasis is illustrative, not a segmented patient-specific model.
       material.onBeforeCompile = shader => {
         Object.assign(shader.uniforms, heartUniforms);
+        shader.uniforms.chamberCode = {value: HeartAnatomy.codes[chamber] || 0};
+        shader.uniforms.sourceCenter = {value: heartAnatomy.center};
+        shader.uniforms.sourceScale = {value: heartAnatomy.scale};
         const shared = `uniform float heartBeat;
           uniform vec3 territoryCenter; uniform float territoryRadius;
           uniform float territoryStrength; uniform float territoryMotion;
+          uniform float territoryChamber; uniform float chamberCode;
+          uniform vec3 sourceCenter; uniform float sourceScale;
           varying vec3 vAnatomyPosition;`;
         shader.vertexShader = shared + '\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
           #include <begin_vertex>
           vAnatomyPosition = position;
-          float ventricularWeight = 1.0 - smoothstep(-0.12, 0.24, position.y);
-          float affectedWeight = 1.0 - smoothstep(territoryRadius * 0.35, territoryRadius, distance(position, territoryCenter));
+          float sourceY = position.y / sourceScale + sourceCenter.y;
+          float ventricularWeight = 1.0 - smoothstep(0.44, 0.48, sourceY);
+          float eligible = 1.0 - step(0.1, abs(chamberCode - territoryChamber));
+          float affectedWeight = (1.0 - smoothstep(territoryRadius * 0.35, territoryRadius, distance(position, territoryCenter))) * eligible;
           float localMotion = mix(1.0, territoryMotion, affectedWeight * territoryStrength);
           float contraction = 0.025 * heartBeat * ventricularWeight * localMotion;
           transformed.xz *= 1.0 - contraction;
@@ -987,14 +983,19 @@ function loadHeart() {
         shader.fragmentShader = shared + '\n' + shader.fragmentShader;
         shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `
           #include <emissivemap_fragment>
-          float territoryWeight = 1.0 - smoothstep(territoryRadius * 0.35, territoryRadius, distance(vAnatomyPosition, territoryCenter));
+          float eligible = 1.0 - step(0.1, abs(chamberCode - territoryChamber));
+          float territoryWeight = (1.0 - smoothstep(territoryRadius * 0.35, territoryRadius, distance(vAnatomyPosition, territoryCenter))) * eligible;
           totalEmissiveRadiance += vec3(0.38, 0.065, 0.012) * territoryWeight * territoryStrength;
         `);
       };
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.name = 'Textured anatomical heart';
+      mesh.name = name;
+      mesh.userData.chamber = chamber;
       heartPivot.add(mesh);
     });
+    setAnatomyView(anatomyView);
+    buildInfarct(currentScenario);
+    if (popupLead) buildLeadArrows(popupLead);
     heartLoading = false;
     status.hidden = true;
     scenePaneEl.dataset.modelState = 'ready';
@@ -1093,16 +1094,17 @@ function resetCamera() {
 }
 function setAnatomyView(view) {
  anatomyView=view;torsoGroup.visible=view==='electrodes';
- // Match the HRA reference heart width (0.12435 m) without stretching the approved heart.
- heartPivot.scale.setScalar(view==='electrodes' ? .557 : 1);
- heartPivot.position.set(view==='electrodes' ? .075 : 0, view==='electrodes' ? .27 : .07, view==='electrodes' ? .15 : 0);
+ // Same metric transform as torso: no independent orientation or placement adjustments.
+ heartPivot.scale.setScalar(view==='electrodes' && heartAnatomy ? heartAnatomy.bodyScale : 1);
+ if(view==='electrodes' && heartAnatomy) heartPivot.position.copy(heartAnatomy.bodyPosition);
+ else heartPivot.position.set(0,.07,0);
  updateBodyStatus();
  document.getElementById('body-credit').hidden = view !== 'electrodes';
  document.getElementById('label-container').style.visibility=view==='electrodes'?'visible':'hidden';
  Object.values(elecMeshes).forEach(m=>{m.visible=view==='electrodes'&&(leadMode==='12'||!m.userData.precordial);});
  arrowGroup.visible=view==='electrodes';
  document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
- document.getElementById('scene-caption').textContent=view==='heart'?'Anatomical heart · textured model':'Heart in chest · reference proportions';
+ document.getElementById('scene-caption').textContent=view==='heart'?'Heart · Human Reference Atlas':'Heart in chest · atlas alignment';
  resetCamera();
 }
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setAnatomyView(b.dataset.view)));
@@ -1281,15 +1283,18 @@ function buildInfarct(scenario) {
   if (appMode === 'quiz' && !quizRevealed) return;
 
   const terr = TERRITORY[scenario];
-  if (!terr) return;
+  if (!terr || !heartAnatomy) return;
   activeTerritory = terr;
 
-  heartUniforms.territoryCenter.value.set(...terr.center);
-  heartUniforms.territoryRadius.value = terr.r * 2.1;
+  const center = heartAnatomy.toLocal(terr.source);
+  heartUniforms.territoryCenter.value.copy(center);
+  heartUniforms.territoryRadius.value = terr.r * heartAnatomy.scale;
+  heartUniforms.territoryChamber.value = HeartAnatomy.codes[terr.chamber];
   heartUniforms.territoryStrength.value = 1;
   heartUniforms.territoryMotion.value = {akinetic: 0, hypokinetic: .4, dyskinetic: -.8}[terr.motion] ?? 1;
   infarctMarker = new THREE.Object3D();
-  infarctMarker.position.set(...terr.center);
+  infarctMarker.position.copy(center);
+  infarctTag.textContent = scenario === 'septal' ? 'SEPTUM · INTERNAL' : 'ILLUSTRATIVE REGION';
   heartPivot.add(infarctMarker);
 }
 
@@ -1343,7 +1348,7 @@ function buildLeadArrows(leadName) {
 
   // Heart center in WORLD coords (heartPivot.position is its world pos after normalization)
   const heartCenter = new THREE.Vector3();
-  heartPivot.getWorldPosition(heartCenter);
+  heartCenter.copy(heartAnatomy ? heartPivot.localToWorld(heartAnatomy.electricalCenter.clone()) : heartPivot.getWorldPosition(new THREE.Vector3()));
 
   if (comp.type === 'bipolar' || comp.type === 'augmented') {
     // Lead axis derived from ACTUAL electrode positions so the arrow visually aligns
@@ -1452,7 +1457,7 @@ function buildLeadArrows(leadName) {
     const posP = getElecPos(comp.elec);
     highlight(comp.elec, 0x4ad7ff);
     comp.neg.forEach(n => highlight(n, 0xff5c7a));
-    const heartCenter = heartPivot.getWorldPosition(new THREE.Vector3());
+    const heartCenter = heartAnatomy ? heartPivot.localToWorld(heartAnatomy.electricalCenter.clone()) : heartPivot.getWorldPosition(new THREE.Vector3());
     const dir = heartCenter.clone().sub(posP).normalize();
     const len = posP.distanceTo(heartCenter);
     const arrow = new THREE.ArrowHelper(dir, posP, len, 0x4ad7ff, 0.10, 0.06);
